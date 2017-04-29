@@ -125,6 +125,8 @@ void Tree::grow(std::vector<double>* variable_importance) {
     ++i;
   }
 
+  std::cout << "tree-size," + std::to_string(sampleIDs.size()) << std::endl;
+
 // Delete sampleID vector to save memory
   sampleIDs.clear();
   cleanUpInternal();
@@ -261,6 +263,15 @@ bool Tree::splitNode(size_t nodeID) {
 // Call subclass method, sets split_varIDs and split_values
   bool stop = splitNodeInternal(nodeID, possible_split_varIDs);
   if (stop) {
+    /*
+    if(sc_IDs[nodeID].size() > 0 ) {
+        std::cout << "SHAPE-CONSTR-LOG";
+        for (size_t i = 0; i < sc_IDs[nodeID].size(); ++i) {
+            std::cout << "," + sc_IDs[nodeID][i];
+        }
+        std::cout << std::endl;
+    }
+    */
     // Terminal node
     return true;
   }
@@ -272,10 +283,20 @@ bool Tree::splitNode(size_t nodeID) {
   size_t left_child_nodeID = sampleIDs.size();
   child_nodeIDs[0][nodeID] = left_child_nodeID;
   createEmptyNode();
+  sc_IDs[left_child_nodeID] = sc_IDs[nodeID];
+  if(split_varID == 3) { // should be FinishSqFt for zillow data (temporary test)
+    sc_IDs[left_child_nodeID].push_back('L' + std::to_string(nodeID));
+  }
+
 
   size_t right_child_nodeID = sampleIDs.size();
   child_nodeIDs[1][nodeID] = right_child_nodeID;
   createEmptyNode();
+  sc_IDs[right_child_nodeID] = sc_IDs[nodeID];
+  if(split_varID == 3) { // should be FinishSqFt for zillow data (temporary test)
+    sc_IDs[right_child_nodeID].push_back('R' + std::to_string(nodeID));
+  }
+
 
 // For each sample in node, assign to left or right child
   if ((*is_ordered_variable)[split_varID]) {
@@ -313,6 +334,7 @@ void Tree::createEmptyNode() {
   child_nodeIDs[0].push_back(0);
   child_nodeIDs[1].push_back(0);
   sampleIDs.push_back(std::vector<size_t>());
+  sc_IDs.push_back(std::vector<std::string>());
 
   createEmptyNodeInternal();
 }

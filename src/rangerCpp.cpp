@@ -54,6 +54,7 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
     uint num_random_splits) {
 
+  std::cout << "-- running shape constrained version --" << std::endl;
   Rcpp::List result;
   Forest* forest = 0;
   Data* data = 0;

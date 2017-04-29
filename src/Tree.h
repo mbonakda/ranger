@@ -137,6 +137,9 @@ protected:
   // Splitting variable for each node
   std::vector<size_t> split_varIDs;
 
+  // shape-constraint identifier
+  std::vector<std::vector<std::string>> sc_IDs;
+
   // Value to split at for each node, for now only binary split
   // For terminal nodes the prediction value is saved here
   std::vector<double> split_values;
