@@ -31,6 +31,7 @@
 #include "Tree.h"
 #include "utility.h"
 
+
 Tree::Tree() :
     dependent_varID(0), mtry(0), num_samples(0), num_samples_oob(0), is_ordered_variable(0), no_split_variables(0), min_node_size(
         0), deterministic_varIDs(0), split_select_varIDs(0), split_select_weights(0), case_weights(0), oob_sampleIDs(0), holdout(
@@ -127,9 +128,108 @@ void Tree::grow(std::vector<double>* variable_importance) {
 
   std::cout << "tree-size," + std::to_string(sampleIDs.size()) << std::endl;
 
+  // **********************************************************
+  // over-constrained optimization
+  // **********************************************************
+ 
+  std::cout << "level-order tree traversal" << std::endl;
+  // 1. level-order traversal of shape-constrained nodes
+  std::vector<size_t> sc_nodes;
+  std::queue<size_t>  q;
+  q.push(0);
+  while(q.empty() == false) {
+
+      size_t curr_node    = q.front();
+      size_t left_nodeID  = child_nodeIDs[0][curr_node]; 
+      size_t right_nodeID = child_nodeIDs[1][curr_node]; 
+      q.pop();
+
+      // only add nodes with children
+      if(split_varIDs[curr_node] == 3 && left_nodeID != 0 && right_nodeID != 0) {
+          sc_nodes.push_back(curr_node);
+      }
+      
+      if(left_nodeID != 0) {
+          q.push(left_nodeID);
+      }
+      if(right_nodeID != 0) {
+          q.push(right_nodeID);
+      }
+  }
+  
+  std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
+  std::cout << "number of shape-constrained nodes: " << sc_nodes.size() << std::endl;
+  
+  optmap node_to_left;
+  optmap node_to_right;
+  // 2. for each optimization node, need vector of left/right leaf IDs and values
+  for (auto& nn : sc_nodes) {
+      std::vector<std::pair<size_t, double>> left  = get_leaves(child_nodeIDs[0][nn], node_to_left, node_to_right);
+      node_to_left[nn] = left;
+      std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
+      node_to_right[nn] = right;
+      std::cout << nn << "," << left.size() << "," << right.size() << std::endl;
+  }
+ 
+
+  // 3. perform bottom-up over-constrained optimization
+  for (auto& nn : sc_nodes) {
+      over_constr_opt(nn, node_to_left, node_to_right);
+  }
+  // **********************************************************
+
 // Delete sampleID vector to save memory
   sampleIDs.clear();
   cleanUpInternal();
+}
+
+void Tree::over_constr_opt(node, const optmap & leftmap, const optmap & rightmap) {
+
+    // construct vectors for left and right nodeIDs [note use split_values for up to date values]
+    // sort vectors and maintain list of sorted indices
+    // run algorithm
+    // update split_values
+
+}
+
+std::vector<std::pair<size_t, double>> Tree::get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap) {
+
+    std::vector<std::pair<size_t, double>> result;
+
+    size_t left_id    = child_nodeIDs[0][node_id];
+    size_t right_id   = child_nodeIDs[1][node_id];
+
+    if( left_id == 0 && right_id == 0 ) {
+        std::pair<size_t, double> res_data;
+        res_data.first  = node_id;
+        res_data.second = split_values[node_id];
+        result.push_back(res_data);
+        return(result);
+    }
+
+    std::vector<std::pair<size_t, double>> leftData, rightData;
+
+    optmap::const_iterator got_left  = leftmap.find(node_id);
+    if( got_left != leftmap.end() ) {
+        leftData = got_left->second;
+    } else {
+        leftData          = get_leaves(left_id, leftmap, rightmap);
+    }
+
+    optmap::const_iterator got_right = rightmap.find(node_id);
+    if( got_right != rightmap.end() ) {
+        rightData = got_right->second;
+    } else { 
+        rightData         = get_leaves(right_id, leftmap, rightmap);
+    }
+       
+
+    
+
+    result.insert(result.end(), leftData.begin(), leftData.end());
+    result.insert(result.end(), rightData.begin(), rightData.end());
+
+    return(result);
 }
 
 void Tree::predict(const Data* prediction_data, bool oob_prediction) {

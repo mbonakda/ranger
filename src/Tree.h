@@ -32,9 +32,13 @@
 #include <vector>
 #include <random>
 #include <iostream>
+#include <queue> // SC
+#include <unordered_map> // SC
 
 #include "globals.h"
 #include "Data.h"
+
+typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap;
 
 class Tree {
 public:
@@ -64,6 +68,9 @@ public:
   void appendToFile(std::ofstream& file);
   virtual void appendToFileInternal(std::ofstream& file) = 0;
 
+  std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
+  void over_constr_opt(node, const optmap & leftmap, const optmap & rightmap);
+
   const std::vector<std::vector<size_t> >& getChildNodeIDs() const {
     return child_nodeIDs;
   }
@@ -80,7 +87,6 @@ public:
   size_t getNumSamplesOob() const {
     return num_samples_oob;
   }
-
   const std::vector<size_t>& getInbagCounts() const {
     return inbag_counts;
   }
