@@ -38,7 +38,8 @@
 #include "globals.h"
 #include "Data.h"
 
-typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap;
+// shape-constrained node id -> vector of leaf (node id, value) pairs
+typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
 
 class Tree {
 public:
@@ -69,7 +70,7 @@ public:
   virtual void appendToFileInternal(std::ofstream& file) = 0;
 
   std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
-  void over_constr_opt(node, const optmap & leftmap, const optmap & rightmap);
+  void over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & leftmap, const std::vector<std::pair<size_t, double>> & rightmap);
 
   const std::vector<std::vector<size_t> >& getChildNodeIDs() const {
     return child_nodeIDs;

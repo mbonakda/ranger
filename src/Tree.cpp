@@ -129,7 +129,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   std::cout << "tree-size," + std::to_string(sampleIDs.size()) << std::endl;
 
   // **********************************************************
-  // over-constrained optimization
+  // over-constrained shape constraint
   // **********************************************************
  
   std::cout << "level-order tree traversal" << std::endl;
@@ -160,6 +160,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
   std::cout << "number of shape-constrained nodes: " << sc_nodes.size() << std::endl;
   
+  // shape-constrained node id -> vector of leaf (node id, value) pairs
   optmap node_to_left;
   optmap node_to_right;
   // 2. for each optimization node, need vector of left/right leaf IDs and values
@@ -174,7 +175,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
 
   // 3. perform bottom-up over-constrained optimization
   for (auto& nn : sc_nodes) {
-      over_constr_opt(nn, node_to_left, node_to_right);
+      over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
   }
   // **********************************************************
 
@@ -183,10 +184,55 @@ void Tree::grow(std::vector<double>* variable_importance) {
   cleanUpInternal();
 }
 
-void Tree::over_constr_opt(node, const optmap & leftmap, const optmap & rightmap) {
+std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<double> & sorted_v, bool increasing) {
+
+  // initialize original index locations
+  std::vector<size_t> idx(v.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  if( increasing ) {
+	  sort(idx.begin(), idx.end(),
+			  [&v](size_t i1, size_t i2) {return v[i1] < v[i2];});
+  } else {
+	  sort(idx.begin(), idx.end(),
+			  [&v](size_t i1, size_t i2) {return v[i1] > v[i2];});
+  }
+
+  for( int ii = 0; ii < v.size(); ++ii ) {
+	  sorted_v[ii] = v[idx[ii]];
+  }
+	
+  return idx;
+}
+
+void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & left, const std::vector<std::pair<size_t, double>>& right) {
 
     // construct vectors for left and right nodeIDs [note use split_values for up to date values]
+    std::vector<size_t> left_ids, right_ids;
+    std::vector<double> left_vals, right_vals;
+    for( auto& vv : left ) {
+        left_ids.push_back(vv.first);
+        left_vals.push_back(vv.second);
+    }
+
+    for( auto& vv : right ) {
+        right_ids.push_back(vv.first);
+        right_vals.push_back(vv.second);
+    }
+
+	std::vector<double> sorted_right(right_vals.size());
+	std::vector<double> sorted_left(left_vals.size());
+
     // sort vectors and maintain list of sorted indices
+	std::vector <size_t> right_idx = sort_indexes(right_vals, sorted_right, true);
+	std::vector <size_t> left_idx  = sort_indexes(left_vals, sorted_left, false);
+
+	std::cout << "right values:" << std::endl;
+	for( int ii = 0; ii < right_vals.size(); ++ii ) {
+		std::cout << right_vals[ii] << "," << sorted_right[ii] << "," << right_idx[ii] << std::endl;
+	}
+
     // run algorithm
     // update split_values
 
@@ -202,7 +248,7 @@ std::vector<std::pair<size_t, double>> Tree::get_leaves(size_t node_id, const op
     if( left_id == 0 && right_id == 0 ) {
         std::pair<size_t, double> res_data;
         res_data.first  = node_id;
-        res_data.second = split_values[node_id];
+        res_data.second = split_values[node_id]; // probably don't need these stored in another data structure
         result.push_back(res_data);
         return(result);
     }
