@@ -30,6 +30,7 @@
 
 #include "Tree.h"
 #include "utility.h"
+#include <set> //SC
 
 
 Tree::Tree() :
@@ -144,6 +145,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
       size_t right_nodeID = child_nodeIDs[1][curr_node]; 
       q.pop();
 
+	  //std::cout << "FinishSqFt ID == " << data->getVariableID("FinishSqFt") << std::endl;
       // only add nodes with children
       if(split_varIDs[curr_node] == 3 && left_nodeID != 0 && right_nodeID != 0) {
           sc_nodes.push_back(curr_node);
@@ -169,7 +171,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
       node_to_left[nn] = left;
       std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
       node_to_right[nn] = right;
-      std::cout << nn << "," << left.size() << "," << right.size() << std::endl;
+      //std::cout << nn << "," << left.size() << "," << right.size() << std::endl;
   }
  
 
@@ -179,6 +181,19 @@ void Tree::grow(std::vector<double>* variable_importance) {
   }
   // **********************************************************
 
+  std::set<size_t> leaf_ids;
+  for (auto& nn : sc_nodes) {
+	for(auto& ii: node_to_left[nn]) {
+		leaf_ids.insert(ii.first);
+	}
+	for(auto& ii: node_to_right[nn]) {
+		leaf_ids.insert(ii.first);
+	}
+  }
+
+  for( auto it = leaf_ids.begin(); it != leaf_ids.end(); ++it ) {
+	std::cout << split_values[*it] << std::endl;
+  }	
 // Delete sampleID vector to save memory
   sampleIDs.clear();
   cleanUpInternal();
@@ -228,14 +243,105 @@ void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, doub
 	std::vector <size_t> right_idx = sort_indexes(right_vals, sorted_right, true);
 	std::vector <size_t> left_idx  = sort_indexes(left_vals, sorted_left, false);
 
-	std::cout << "right values:" << std::endl;
-	for( int ii = 0; ii < right_vals.size(); ++ii ) {
-		std::cout << right_vals[ii] << "," << sorted_right[ii] << "," << right_idx[ii] << std::endl;
+    
+	/*
+	std::cout << "before left values:" << std::endl;
+	for( int ii = 0; ii < sorted_left.size(); ++ii ) {
+		std::cout << sorted_left[ii] << ","; 
 	}
+	std::cout << std::endl;
+
+	std::cout << "before right values:" << std::endl;
+	for( int ii = 0; ii < sorted_right.size(); ++ii ) {
+		std::cout << sorted_right[ii] << ","; 
+	}
+	std::cout << std::endl;
+	*/
 
     // run algorithm
-    // update split_values
+    size_t il = 0, ir = 0; 
+    if( sorted_left[il] <= sorted_right[ir] ) {
+		//std::cout << "skip" << std::endl;
+        return;
+    }
 
+    double nn  = 2;
+    double avg = (sorted_left[il] + sorted_right[ir]) / nn; 
+    il++; ir++;
+
+    bool l_end = (il == sorted_left.size());
+    bool r_end = (ir == sorted_right.size());
+	bool end   = l_end && r_end;
+
+	bool l_violate = false;
+	bool r_violate = false;
+	bool violation = false;
+
+	if( ! end ) {
+
+		if( !l_end ) 
+			l_violate = avg < sorted_left[il];
+		if( !r_end ) 
+			r_violate = avg > sorted_right[ir];
+		violation = l_violate || r_violate;
+
+
+		while( violation ) {
+			if( l_violate && !l_end ) {
+				avg = (nn / (nn+1))*avg + (1/(nn+1))*sorted_left[il];
+				il++; nn++;
+			}
+
+			if( !r_end ) {
+				r_violate = avg > sorted_right[ir];
+				if( r_violate  ) {
+					avg = (nn / (nn+1))*avg + (1/(nn+1))*sorted_right[ir];
+					ir++; nn++;
+				}
+			}
+
+			l_end = (il == sorted_left.size());
+			r_end = (ir == sorted_right.size());
+			end   = l_end && r_end;
+
+			if( end ) break;
+
+			if( !l_end ) 
+				l_violate = avg < sorted_left[il];
+			else
+				l_violate = false;
+			if( !r_end ) 
+				r_violate = avg > sorted_right[ir];
+			else
+				r_violate = false;
+			violation = l_violate || r_violate;
+			//std::cout << sorted_left.size() << "," << il << sorted_right.size() << "," << ir << std::endl;
+		}
+	}
+
+	for( size_t ii = 0; ii < il; ++ii ) {
+		split_values[left_idx[ii]] = avg;
+		//sorted_left[ii] = avg;
+	}
+
+	for( size_t ii = 0; ii < ir; ++ii ) {
+		split_values[right_idx[ii]] = avg;
+		//sorted_right[ii] = avg;
+	}
+
+	/*
+	std::cout << "after left values:" << std::endl;
+	for( int ii = 0; ii < sorted_left.size(); ++ii ) {
+		std::cout << sorted_left[ii] << ","; 
+	}
+	std::cout << std::endl;
+
+	std::cout << "after right values:" << std::endl;
+	for( int ii = 0; ii < sorted_right.size(); ++ii ) {
+		std::cout << sorted_right[ii] << ","; 
+	}
+	std::cout << std::endl;
+	*/
 }
 
 std::vector<std::pair<size_t, double>> Tree::get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap) {
