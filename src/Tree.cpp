@@ -133,7 +133,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
   // over-constrained shape constraint
   // **********************************************************
  
-  std::cout << "level-order tree traversal" << std::endl;
   // 1. level-order traversal of shape-constrained nodes
   std::vector<size_t> sc_nodes;
   std::queue<size_t>  q;
@@ -145,7 +144,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
       size_t right_nodeID = child_nodeIDs[1][curr_node]; 
       q.pop();
 
-	  //std::cout << "FinishSqFt ID == " << data->getVariableID("FinishSqFt") << std::endl;
       // only add nodes with children
       if(split_varIDs[curr_node] == 3 && left_nodeID != 0 && right_nodeID != 0) {
           sc_nodes.push_back(curr_node);
@@ -161,17 +159,17 @@ void Tree::grow(std::vector<double>* variable_importance) {
   
   std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
   std::cout << "number of shape-constrained nodes: " << sc_nodes.size() << std::endl;
-  
+
   // shape-constrained node id -> vector of leaf (node id, value) pairs
   optmap node_to_left;
   optmap node_to_right;
+
   // 2. for each optimization node, need vector of left/right leaf IDs and values
   for (auto& nn : sc_nodes) {
       std::vector<std::pair<size_t, double>> left  = get_leaves(child_nodeIDs[0][nn], node_to_left, node_to_right);
       node_to_left[nn] = left;
       std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
       node_to_right[nn] = right;
-      //std::cout << nn << "," << left.size() << "," << right.size() << std::endl;
   }
  
 
@@ -179,8 +177,8 @@ void Tree::grow(std::vector<double>* variable_importance) {
   for (auto& nn : sc_nodes) {
       over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
   }
-  // **********************************************************
 
+  /*
   std::set<size_t> leaf_ids;
   for (auto& nn : sc_nodes) {
 	for(auto& ii: node_to_left[nn]) {
@@ -191,9 +189,12 @@ void Tree::grow(std::vector<double>* variable_importance) {
 	}
   }
 
+  std::cout << leaf_ids.size() << " final leaves";
   for( auto it = leaf_ids.begin(); it != leaf_ids.end(); ++it ) {
-	std::cout << split_values[*it] << std::endl;
+	std::cout << "," << *it;
   }	
+  std::cout << std::endl;
+  */
 // Delete sampleID vector to save memory
   sampleIDs.clear();
   cleanUpInternal();
@@ -228,12 +229,12 @@ void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, doub
     std::vector<double> left_vals, right_vals;
     for( auto& vv : left ) {
         left_ids.push_back(vv.first);
-        left_vals.push_back(vv.second);
+        left_vals.push_back(split_values[vv.first]);
     }
 
     for( auto& vv : right ) {
         right_ids.push_back(vv.first);
-        right_vals.push_back(vv.second);
+        right_vals.push_back(split_values[vv.first]);
     }
 
 	std::vector<double> sorted_right(right_vals.size());
@@ -261,7 +262,6 @@ void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, doub
     // run algorithm
     size_t il = 0, ir = 0; 
     if( sorted_left[il] <= sorted_right[ir] ) {
-		//std::cout << "skip" << std::endl;
         return;
     }
 
@@ -315,18 +315,15 @@ void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, doub
 			else
 				r_violate = false;
 			violation = l_violate || r_violate;
-			//std::cout << sorted_left.size() << "," << il << sorted_right.size() << "," << ir << std::endl;
 		}
 	}
 
 	for( size_t ii = 0; ii < il; ++ii ) {
-		split_values[left_idx[ii]] = avg;
-		//sorted_left[ii] = avg;
+		split_values[left_ids[left_idx[ii]]] = avg;
 	}
 
 	for( size_t ii = 0; ii < ir; ++ii ) {
-		split_values[right_idx[ii]] = avg;
-		//sorted_right[ii] = avg;
+		split_values[right_ids[right_idx[ii]]] = avg;
 	}
 
 	/*
@@ -438,6 +435,8 @@ void Tree::predict(const Data* prediction_data, bool oob_prediction) {
     }
 
     prediction_terminal_nodeIDs[i] = nodeID;
+    //if(!oob_prediction)
+    //    std::cout << "prediction node: " << nodeID << " " << split_values[nodeID] << std::endl;
   }
 }
 
