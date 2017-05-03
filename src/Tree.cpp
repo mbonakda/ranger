@@ -132,7 +132,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
     ++i;
   }
 
-  std::cout << "tree-size," + std::to_string(sampleIDs.size()) << std::endl;
+  std::cout << "number of nodes," + std::to_string(sampleIDs.size()) << std::endl;
 
   // **********************************************************
   // over-constrained shape constraint
@@ -165,7 +165,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
       }
 
       std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
-      std::cout << "number of shape-constrained nodes: " << sc_nodes.size() << std::endl;
+      std::cout << "number of shape-constrained nodes," << sc_nodes.size() << std::endl;
 
       // shape-constrained node id -> vector of leaf (node id, value) pairs
       optmap node_to_left;
@@ -231,6 +231,8 @@ std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<doubl
 }
 
 void Tree::over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & left, const std::vector<std::pair<size_t, double>>& right) {
+
+    std::cout << "optimization size," << left.size() << "," << right.size() << "," << left.size() + right.size() << std::endl;
 
     // construct vectors for left and right nodeIDs [note use split_values for up to date values]
     std::vector<size_t> left_ids, right_ids;
