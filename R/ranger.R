@@ -190,7 +190,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                    num.threads = NULL, save.memory = FALSE,
                    verbose = TRUE, seed = NULL, 
                    dependent.variable.name = NULL, status.variable.name = NULL, 
-                   classification = NULL) {
+                   classification = NULL, sc.variable.names = NULL) {
   
   ## GenABEL GWA data
   if ("gwaa.data" %in% class(data)) {
@@ -205,6 +205,10 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   } else {
     sparse.data <- as.matrix(0)
     gwa.mode <- FALSE
+  }
+
+  if(is.null(sc.variable.names)) {
+      sc.variable.names = c('')
   }
   
   ## Formula interface. Use whole data frame is no formula provided and depvarname given
@@ -599,7 +603,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                       replace, probability, unordered.factor.variables, use.unordered.factor.variables, 
                       save.memory, splitrule.num, case.weights, use.case.weights, predict.all, 
                       keep.inbag, sample.fraction, alpha, minprop, holdout, prediction.type, 
-                      num.random.splits)
+                      num.random.splits, sc.variable.names)
   
   if (length(result) == 0) {
     stop("User interrupt or internal error.")

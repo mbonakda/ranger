@@ -156,7 +156,8 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
     std::string status_variable_name, bool prediction_mode, bool sample_with_replacement,
     std::vector<std::string>& unordered_variable_names, bool memory_saving_splitting, SplitRule splitrule,
     std::vector<double>& case_weights, bool predict_all, bool keep_inbag, double sample_fraction, double alpha,
-    double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits) {
+    double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits, 
+    std::vector<std::string>& sc_variable_names) {
 
   this->verbose_out = verbose_out;
 
@@ -186,6 +187,14 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
 
   // Keep inbag counts
   this->keep_inbag = keep_inbag;
+
+  // TODO: move to init() function when making shape-constraints accessible to initCpp
+  if (!sc_variable_names.empty()) {
+      for(auto& sc_var : sc_variable_names) {
+          sc_variable_IDs.push_back(data->getVariableID(sc_var));
+      }
+  }
+     
 }
 
 void Forest::init(std::string dependent_variable_name, MemoryMode memory_mode, Data* input_data, uint mtry,
@@ -429,7 +438,7 @@ void Forest::grow() {
     trees[i]->init(data, mtry, dependent_varID, num_samples, tree_seed, &deterministic_varIDs, &split_select_varIDs,
         tree_split_select_weights, importance_mode, min_node_size, &no_split_variables, sample_with_replacement,
         &is_ordered_variable, memory_saving_splitting, splitrule, &case_weights, keep_inbag, sample_fraction, alpha,
-        minprop, holdout, num_random_splits);
+        minprop, holdout, num_random_splits, &sc_variable_IDs);
   }
 
 // Init variable importance

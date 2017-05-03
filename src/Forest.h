@@ -64,7 +64,8 @@ public:
       std::string status_variable_name, bool prediction_mode, bool sample_with_replacement,
       std::vector<std::string>& unordered_variable_names, bool memory_saving_splitting, SplitRule splitrule,
       std::vector<double>& case_weights, bool predict_all, bool keep_inbag, double sample_fraction, double alpha,
-      double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits);
+      double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits,
+      std::vector<std::string>& sc_variable_names);
   void init(std::string dependent_variable_name, MemoryMode memory_mode, Data* input_data, uint mtry,
       std::string output_prefix, uint num_trees, uint seed, uint num_threads, ImportanceMode importance_mode,
       uint min_node_size, std::string status_variable_name, bool prediction_mode, bool sample_with_replacement,
@@ -213,6 +214,8 @@ protected:
 
   // Variable to not split at (only dependent_varID for non-survival forests)
   std::vector<size_t> no_split_variables;
+
+  std::vector<size_t> sc_variable_IDs;
 
   // Multithreading
   uint num_threads;

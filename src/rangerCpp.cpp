@@ -52,9 +52,19 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool use_unordered_variable_names, bool save_memory, uint splitrule_r, 
     std::vector<double>& case_weights, bool use_case_weights, bool predict_all, 
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
-    uint num_random_splits) {
+    uint num_random_splits, std::vector<std::string> sc_variable_names) {
 
   std::cout << "-- running shape constrained version --" << std::endl;
+  if(sc_variable_names.size() == 1 && sc_variable_names[0] == "") {
+      if(!prediction_mode)
+          std::cout << "no shape constrained variabled" << std::endl;
+      sc_variable_names.clear(); // TODO: better way of handling no shape-contraints
+  } else {
+      for( auto & s : sc_variable_names ) {
+          std::cout << "shape-constrained variable: " << s << std::endl;
+      }
+  }
+
   Rcpp::List result;
   Forest* forest = 0;
   Data* data = 0;
@@ -119,7 +129,8 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     forest->initR(dependent_variable_name, data, mtry, num_trees, verbose_out, seed, num_threads,
         importance_mode, min_node_size, split_select_weights, always_split_variable_names, status_variable_name,
         prediction_mode, sample_with_replacement, unordered_variable_names, save_memory, splitrule, case_weights, 
-        predict_all, keep_inbag, sample_fraction, alpha, minprop, holdout, prediction_type, num_random_splits);
+        predict_all, keep_inbag, sample_fraction, alpha, minprop, holdout, prediction_type, num_random_splits,
+        sc_variable_names);
 
     // Load forest object if in prediction mode
     if (prediction_mode) {
