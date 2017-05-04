@@ -57,7 +57,7 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
   std::cout << "-- running shape constrained version --" << std::endl;
   if(sc_variable_names.size() == 1 && sc_variable_names[0] == "") {
       if(!prediction_mode)
-          std::cout << "no shape constrained variabled" << std::endl;
+          std::cout << "no shape constrained variables" << std::endl;
       sc_variable_names.clear(); // TODO: better way of handling no shape-contraints
   } else {
       for( auto & s : sc_variable_names ) {
