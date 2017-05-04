@@ -54,7 +54,9 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
     uint num_random_splits, std::vector<std::string> sc_variable_names) {
 
-  std::cout << "-- running shape constrained version --" << std::endl;
+  if(!prediction_mode)
+    std::cout << "-- running shape constrained version --" << std::endl;
+
   if(sc_variable_names.size() == 1 && sc_variable_names[0] == "") {
       if(!prediction_mode)
           std::cout << "no shape constrained variables" << std::endl;
