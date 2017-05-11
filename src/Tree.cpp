@@ -30,7 +30,10 @@
 
 #include "Tree.h"
 #include "utility.h"
+
 #include <set> //SC
+#include <limits>
+#include <chrono>
 
 
 Tree::Tree() :
@@ -100,6 +103,65 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
   initInternal();
 }
 
+// TODO: pass in vector of intersections as referece, make it a member function and dont pass dim_intervals
+std::vector<std::pair<size_t, size_t>> find_intersections( const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
+                                                           const std::vector<std::vector<std::pair<double, double>>> & dim_intervals  ) {
+    std::vector<std::pair<size_t, size_t>> result;
+    for( int l_idx = 0; l_idx < l_leaves.size(); ++l_idx ) {
+        size_t l_leafID = l_leaves[l_idx].first;
+        std::vector<std::pair<double, double>> l_cell = dim_intervals[l_leafID]; // TODO: avoid copy
+        for( int r_idx = 0; r_idx < r_leaves.size(); ++r_idx ) {
+            size_t r_leafID = r_leaves[r_idx].first;
+            std::vector<std::pair<double, double>> r_cell = dim_intervals[r_leafID]; // TODO: avoid copy
+            bool intersect = true;
+            for( int d_idx = 0; d_idx < l_cell.size(); ++d_idx )  {
+                double i0 = std::max( l_cell[d_idx].first, r_cell[d_idx].first);
+                double i1 = std::min( l_cell[d_idx].second, r_cell[d_idx].second);
+                if(i0 > i1) {
+                    intersect = false;
+                    /*
+                    std::cout << "does not intersection. dimension = " << d_idx << std::endl;
+                    std::cout << "left: ";
+                    for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
+                        std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
+                    }
+                    std::cout << std::endl;
+
+                    std::cout << "right: ";
+                    for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
+                        std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
+                    }
+                    std::cout << std::endl;
+                    */
+                    break;
+                }
+            }
+            if( intersect ) {
+                result.push_back(std::pair<size_t, size_t>(l_leafID, r_leafID));
+
+                /*
+                std::cout << "INTERSECTS" << std::endl;
+                std::cout << "left: ";
+                for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
+                    std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
+                }
+                std::cout << std::endl;
+
+                std::cout << "right: ";
+                for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
+                    std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
+                }
+                std::cout << std::endl;
+                */
+            }
+        }
+    }
+
+    //std::cout << "size of intersection: " << result.size() << std::endl;
+    return(result);
+
+}
+
 void Tree::grow(std::vector<double>* variable_importance) {
 
   this->variable_importance = variable_importance;
@@ -135,7 +197,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   //std::cout << "number of nodes," + std::to_string(sampleIDs.size()) << std::endl;
 
   // **********************************************************
-  // over-constrained shape constraint
+  // over-constrained estimator
   // **********************************************************
  
   // 1. level-order traversal of shape-constrained nodes
@@ -179,6 +241,17 @@ void Tree::grow(std::vector<double>* variable_importance) {
           node_to_right[nn] = right;
       }
 
+      for (auto& nn : sc_nodes) {
+          auto t1 = std::chrono::high_resolution_clock::now();
+          std::vector<std::pair<size_t, size_t>> intersections = find_intersections( node_to_left[nn], node_to_right[nn], dim_intervals );
+          auto t2 = std::chrono::high_resolution_clock::now();
+          /*
+          std::cout << "finding intersections took "
+              << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
+              << " seconds\n";
+              */
+      }
+
 
       // 3. perform bottom-up over-constrained optimization
       for (auto& nn : sc_nodes) {
@@ -209,6 +282,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   sampleIDs.clear();
   cleanUpInternal();
 }
+
 
 std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<double> & sorted_v, bool increasing) {
 
@@ -526,15 +600,6 @@ bool Tree::splitNode(size_t nodeID) {
 // Call subclass method, sets split_varIDs and split_values
   bool stop = splitNodeInternal(nodeID, possible_split_varIDs);
   if (stop) {
-    /*
-    if(sc_IDs[nodeID].size() > 0 ) {
-        std::cout << "SHAPE-CONSTR-LOG";
-        for (size_t i = 0; i < sc_IDs[nodeID].size(); ++i) {
-            std::cout << "," + sc_IDs[nodeID][i];
-        }
-        std::cout << std::endl;
-    }
-    */
     // Terminal node
     return true;
   }
@@ -546,20 +611,36 @@ bool Tree::splitNode(size_t nodeID) {
   size_t left_child_nodeID = sampleIDs.size();
   child_nodeIDs[0][nodeID] = left_child_nodeID;
   createEmptyNode();
-  sc_IDs[left_child_nodeID] = sc_IDs[nodeID];
-  if(split_varID == 3) { // should be FinishSqFt for zillow data (temporary test)
-    sc_IDs[left_child_nodeID].push_back('L' + std::to_string(nodeID));
-  }
-
+  dim_intervals.push_back(dim_intervals[nodeID]);
+  dim_intervals[left_child_nodeID][split_varID].second = split_value;
 
   size_t right_child_nodeID = sampleIDs.size();
   child_nodeIDs[1][nodeID] = right_child_nodeID;
   createEmptyNode();
-  sc_IDs[right_child_nodeID] = sc_IDs[nodeID];
-  if(split_varID == 3) { // should be FinishSqFt for zillow data (temporary test)
-    sc_IDs[right_child_nodeID].push_back('R' + std::to_string(nodeID));
-  }
+  dim_intervals.push_back(dim_intervals[nodeID]);
+  dim_intervals[right_child_nodeID][split_varID].first = split_value;
 
+  /*
+  std::cout << "split_varID: " << split_varID << std::endl;
+  std::cout << "split_value: " << split_value << std::endl;
+  std::cout << "parent: ";
+  for( size_t i = 0; i < dim_intervals[nodeID].size(); ++i ) {
+      std::cout << "[" << i << ": (" << dim_intervals[nodeID][i].first << "," << dim_intervals[nodeID][i].second << ")] ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "left: ";
+  for( size_t i = 0; i < dim_intervals[left_child_nodeID].size(); ++i ) {
+      std::cout << "[" << i << ": (" << dim_intervals[left_child_nodeID][i].first << "," << dim_intervals[left_child_nodeID][i].second << ")] ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "right: ";
+  for( size_t i = 0; i < dim_intervals[right_child_nodeID].size(); ++i ) {
+      std::cout << "[" << i << ": (" << dim_intervals[right_child_nodeID][i].first << "," << dim_intervals[right_child_nodeID][i].second << ")] ";
+  }
+  std::cout << std::endl;
+  */
 
 // For each sample in node, assign to left or right child
   if ((*is_ordered_variable)[split_varID]) {
@@ -597,7 +678,16 @@ void Tree::createEmptyNode() {
   child_nodeIDs[0].push_back(0);
   child_nodeIDs[1].push_back(0);
   sampleIDs.push_back(std::vector<size_t>());
-  sc_IDs.push_back(std::vector<std::string>());
+
+  if( dim_intervals.size() == 0 ) {
+      std::cout << "constructing first node" << std::endl;
+      dim_intervals.push_back(std::vector<std::pair<double,double>>());
+      size_t num_vars = data->getVariableNames().size();
+      for( int i = 0; i < num_vars; ++i )  {
+        dim_intervals[0].push_back(std::pair<double,double>(-1 * std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()));
+      }
+  } 
+
 
   createEmptyNodeInternal();
 }
