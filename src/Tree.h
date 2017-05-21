@@ -35,6 +35,7 @@
 #include <queue> // SC
 #include <unordered_map> // SC
 #include <unordered_set> // SC
+#include <set> //SC
 
 #include "globals.h"
 #include "Data.h"
@@ -73,6 +74,7 @@ public:
 
   std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
   void over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & leftmap, const std::vector<std::pair<size_t, double>> & rightmap);
+  void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges);
 
   const std::vector<std::vector<size_t> >& getChildNodeIDs() const {
     return child_nodeIDs;

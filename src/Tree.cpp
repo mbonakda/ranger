@@ -31,9 +31,14 @@
 #include "Tree.h"
 #include "utility.h"
 
-#include <set> //SC
 #include <limits>
 #include <chrono>
+#include "fusion.h"
+#include <memory>
+#include <iostream>
+
+using namespace mosek::fusion;
+using namespace monty;
 
 
 Tree::Tree() :
@@ -240,11 +245,12 @@ void Tree::grow(std::vector<double>* variable_importance) {
           std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
           node_to_right[nn] = right;
       }
-
+      std::vector<std::pair<size_t, size_t>> intersections;
       for (auto& nn : sc_nodes) {
-          auto t1 = std::chrono::high_resolution_clock::now();
-          std::vector<std::pair<size_t, size_t>> intersections = find_intersections( node_to_left[nn], node_to_right[nn], dim_intervals );
-          auto t2 = std::chrono::high_resolution_clock::now();
+          //auto t1 = std::chrono::high_resolution_clock::now();
+          std::vector<std::pair<size_t, size_t>>   tmp_int = find_intersections( node_to_left[nn], node_to_right[nn], dim_intervals );
+          intersections.insert(intersections.end(), tmp_int.begin(), tmp_int.end() );
+          //auto t2 = std::chrono::high_resolution_clock::now();
           /*
           std::cout << "finding intersections took "
               << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
@@ -253,12 +259,13 @@ void Tree::grow(std::vector<double>* variable_importance) {
       }
 
 
+      /*
       // 3. perform bottom-up over-constrained optimization
       for (auto& nn : sc_nodes) {
           over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
       }
+      */
 
-      /*
       std::set<size_t> leaf_ids;
       for (auto& nn : sc_nodes) {
         for(auto& ii: node_to_left[nn]) {
@@ -269,6 +276,9 @@ void Tree::grow(std::vector<double>* variable_importance) {
         }
       }
 
+      goldilocks_opt(leaf_ids, intersections);
+
+      /*
       //std::cout << "total shape-constrained leaves," << leaf_ids.size() << std::endl;
 
          std::cout << leaf_ids.size() << " final leaves";
@@ -283,6 +293,83 @@ void Tree::grow(std::vector<double>* variable_importance) {
   cleanUpInternal();
 }
 
+void Tree::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std::pair<size_t, size_t>> & id_edges) {
+
+  double DIVIDE_MULT = 1e3;
+
+  std::unordered_map<size_t, size_t> id_to_idx; 
+  auto v = new_array_ptr<double,1>(leaves.size());
+
+  size_t idx = 0;
+  for( auto l : leaves ) {
+    (*v)[idx]    = split_values[l]/DIVIDE_MULT;
+    id_to_idx[l] = idx;
+    idx++;
+  }
+
+  std::vector<std::pair<size_t, size_t>> idx_edges;
+  for( auto e : id_edges ) {
+    //std::cout << "constraint," << e.first << "," << e.second << std::endl;
+    idx_edges.push_back(std::pair<size_t,size_t>(id_to_idx[e.first], id_to_idx[e.second]));
+  }
+
+  std::cout << "num_constraints = " << idx_edges.size() << std::endl;
+
+
+
+  size_t num_vars = v->size() + 2; // 2 dummy variables
+  auto c          = new_array_ptr<double,1>(num_vars);
+  (*c)[0] = 0;
+  (*c)[1] = 1;
+  for( size_t ii = 2; ii < c->size(); ++ii ) {
+      (*c)[ii] = -1*(*v)[ii-2];
+  }
+
+  size_t num_constraints = idx_edges.size();
+
+  auto rows   = new_array_ptr<int,1>(2*num_constraints);
+  for(size_t ii = 0; ii < rows->size(); ++ii) {
+    (*rows)[ii] = int(ii/2); // each row appears twice for each constraint
+  }
+
+  auto cols   = new_array_ptr<int,1>(2*num_constraints);
+  auto values = new_array_ptr<double,1>(2*num_constraints);
+  for( int ii = 0; ii < idx_edges.size(); ++ii ) {
+    (*cols)[(2*ii)]         = idx_edges[ii].first + 2;
+    (*values)[2*ii]         = -1;
+    (*cols)[(2*ii)+1]       = idx_edges[ii].second + 2;
+    (*values)[(2*ii)+1]     = 1;
+  }
+
+  auto A = Matrix::sparse(num_constraints, num_vars, rows, cols, values);
+
+
+  Model::t M     = new Model("rrf"); auto _M = finally([&]() { M->dispose(); });
+  //M->setLogHandler([=](const std::string & msg) { std::cout << msg << std::flush; } );
+
+
+  Variable::t x0  = M->variable("x0", 1, Domain::equalsTo(1.));
+  Variable::t x1  = M->variable("x1", 1, Domain::greaterThan(0.));
+  Variable::t x2  = M->variable("x2", num_vars-2, Domain::unbounded());
+
+  Variable::t z1 = Var::vstack(x0, x1, x2);
+
+  Constraint::t qc = M->constraint("qc", z1, Domain::inRotatedQCone());
+  M->constraint("mono", Expr::mul(A,z1),Domain::greaterThan(0.));
+
+  M->objective("obj", ObjectiveSense::Minimize, Expr::dot(c,z1));
+  M->solve();
+  //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
+
+  ndarray<double,1> xlvl   = *(x2->level());
+  for( auto p : id_to_idx ) {
+    double new_val = xlvl[p.second]*DIVIDE_MULT; 
+    double old_val = split_values[p.first];
+    //std::cout << "values," << split_values[p.first] << "," << xlvl[p.second]*1e6 << "," << fabs(new_val - old_val) <<  std::endl;
+    split_values[p.first] = new_val;
+  }
+
+}
 
 std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<double> & sorted_v, bool increasing) {
 
@@ -680,7 +767,6 @@ void Tree::createEmptyNode() {
   sampleIDs.push_back(std::vector<size_t>());
 
   if( dim_intervals.size() == 0 ) {
-      std::cout << "constructing first node" << std::endl;
       dim_intervals.push_back(std::vector<std::pair<double,double>>());
       size_t num_vars = data->getVariableNames().size();
       for( int i = 0; i < num_vars; ++i )  {
