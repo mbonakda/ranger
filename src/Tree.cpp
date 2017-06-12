@@ -273,7 +273,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
       time_goldiInt = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
 
       goldi_num_constraints = intersections.size();
-      //std::cout << "num goldilocks constraints: " << goldi_num_constraints << std::endl;
 
       std::set<size_t> leaf_ids;
       for (auto& nn : sc_nodes) {
@@ -285,7 +284,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
         }
       }
 
-      //goldilocks_opt(leaf_ids, intersections);
+      goldilocks_opt(leaf_ids, intersections);
 
       /*
       // 3. perform bottom-up over-constrained optimization
@@ -293,9 +292,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
           over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
       }
       */
-
-
-
 
       /*
       // 3. perform under-constrained optimization
@@ -306,19 +302,11 @@ void Tree::grow(std::vector<double>* variable_importance) {
      */
 
       /*
-      //std::cout << "total shape-constrained leaves," << leaf_ids.size() << std::endl;
-
-         std::cout << leaf_ids.size() << " final leaves";
-         for( auto it = leaf_ids.begin(); it != leaf_ids.end(); ++it ) {
-         std::cout << "," << *it;
-         }	
-         std::cout << std::endl;
-         */
-
      std::cout << "log,tree.height,under.num.constraints,goldi.num.constraints,over.num.constraints,num.sc.nodes,lowest.sc.depth,num.nodes,time.grow,time.goldiInt,time.underInt" << std::endl;
      std::cout << "log," << tree_height << "," << under_num_constraints << "," << goldi_num_constraints << "," 
        << over_num_constraints << "," << num_sc_nodes << "," << lowest_sc_depth  << "," << sampleIDs.size() 
        << "," << time_growTrees << "," << time_goldiInt << "," << time_underInt << std::endl;
+       */
        
   }
 // Delete sampleID vector to save memory
