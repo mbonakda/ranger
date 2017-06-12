@@ -36,9 +36,18 @@
 #include <unordered_map> // SC
 #include <unordered_set> // SC
 #include <set> //SC
+#include <chrono> //SC
+
+#include <limits>
+#include "fusion.h"
+#include <memory>
+#include <iostream>
 
 #include "globals.h"
 #include "Data.h"
+
+using namespace mosek::fusion;
+using namespace monty;
 
 // shape-constrained node id -> vector of leaf (node id, value) pairs
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
@@ -92,7 +101,7 @@ public:
 
   std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
   void over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & leftmap, const std::vector<std::pair<size_t, double>> & rightmap);
-  void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges);
+  void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges) {}
   void under_constr_opt(const std::vector<std::pair<size_t, size_t>> &edges, const std::vector<std::vector<std::pair<double, double>>> & dim_intervals);
 
   std::vector<std::pair<size_t, size_t>> find_intersections( size_t nodeID, const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
@@ -141,6 +150,7 @@ protected:
   virtual void cleanUpInternal() = 0;
 
   virtual void reshape() { }
+  int time_growTrees, time_goldiInt, time_underInt;
 
   size_t dependent_varID;
   uint mtry;
