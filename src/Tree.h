@@ -43,6 +43,24 @@
 // shape-constrained node id -> vector of leaf (node id, value) pairs
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
 
+// for underconstrained estimator
+// sampleID --> splitNode --> Left/Right --> leafID
+typedef std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> underconstr_map;
+
+class Sample {
+public:
+  Sample(size_t id) {
+    sampleID = id;
+  }
+
+  Sample(size_t id, std::vector<std::pair<size_t, bool>> info) {
+    sampleID = id;
+    split_info = info;
+  }
+  size_t sampleID;
+  std::vector<std::pair<size_t, bool>> split_info;
+};
+
 class Tree {
 public:
   Tree();
@@ -59,7 +77,7 @@ public:
       std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
       bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
       double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-      std::vector<size_t>* sc_variable_IDs);
+      std::vector<size_t>* sc_variable_IDs, int maxTreeHeight);
 
   virtual void initInternal() = 0;
 
@@ -75,6 +93,10 @@ public:
   std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
   void over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & leftmap, const std::vector<std::pair<size_t, double>> & rightmap);
   void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges);
+  void under_constr_opt(const std::vector<std::pair<size_t, size_t>> &edges, const std::vector<std::vector<std::pair<double, double>>> & dim_intervals);
+
+  std::vector<std::pair<size_t, size_t>> find_intersections( size_t nodeID, const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
+      const std::vector<std::vector<std::pair<double, double>>> & dim_intervals  ); 
 
   const std::vector<std::vector<size_t> >& getChildNodeIDs() const {
     return child_nodeIDs;
@@ -118,6 +140,8 @@ protected:
 
   virtual void cleanUpInternal() = 0;
 
+  virtual void reshape() { }
+
   size_t dependent_varID;
   uint mtry;
 
@@ -158,8 +182,20 @@ protected:
   // Vector of left and right child node IDs, 0 for no child
   std::vector<std::vector<size_t>> child_nodeIDs;
 
+
+  int max_tree_height;
   // For each node a vector with IDs of samples in node
   std::vector<std::vector<size_t>> sampleIDs;
+  std::vector<std::vector<Sample>> underconstr_samples;
+  underconstr_map underconstr_info;
+
+  std::vector<int> node_depth;
+  int tree_height;
+  int over_num_constraints;
+  int under_num_constraints;
+  int goldi_num_constraints;
+  int num_sc_nodes;
+  int lowest_sc_depth;
 
   // IDs of OOB individuals, sorted
   std::vector<size_t> oob_sampleIDs;

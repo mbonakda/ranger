@@ -190,7 +190,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                    num.threads = NULL, save.memory = FALSE,
                    verbose = TRUE, seed = NULL, 
                    dependent.variable.name = NULL, status.variable.name = NULL, 
-                   classification = NULL, sc.variable.names = NULL) {
+                   classification = NULL, sc.variable.names = NULL, max.tree.height = NULL ) {
   
   ## GenABEL GWA data
   if ("gwaa.data" %in% class(data)) {
@@ -208,7 +208,11 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   }
 
   if(is.null(sc.variable.names)) {
-      sc.variable.names = c('')
+      sc.variable.names <- c('')
+  }
+
+  if(is.null(max.tree.height)) {
+    max.tree.height <- -1
   }
   
   ## Formula interface. Use whole data frame is no formula provided and depvarname given
@@ -603,7 +607,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                       replace, probability, unordered.factor.variables, use.unordered.factor.variables, 
                       save.memory, splitrule.num, case.weights, use.case.weights, predict.all, 
                       keep.inbag, sample.fraction, alpha, minprop, holdout, prediction.type, 
-                      num.random.splits, sc.variable.names)
+                      num.random.splits, sc.variable.names, max.tree.height)
   
   if (length(result) == 0) {
     stop("User interrupt or internal error.")

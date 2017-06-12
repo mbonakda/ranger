@@ -1,4 +1,5 @@
 /*-------------------------------------------------------------------------------
+ * std::cout << "number of overconstrained intersections = " << num_over_constr << std::endl;
  This file is part of Ranger.
 
  Ranger is free software: you can redistribute it and/or modify
@@ -36,6 +37,7 @@
 #include "fusion.h"
 #include <memory>
 #include <iostream>
+#include <bitset> //SC
 
 using namespace mosek::fusion;
 using namespace monty;
@@ -46,7 +48,7 @@ Tree::Tree() :
         0), deterministic_varIDs(0), split_select_varIDs(0), split_select_weights(0), case_weights(0), oob_sampleIDs(0), holdout(
         false), keep_inbag(false), data(0), variable_importance(0), importance_mode(DEFAULT_IMPORTANCE_MODE), sample_with_replacement(
         true), sample_fraction(1), memory_saving_splitting(false), splitrule(DEFAULT_SPLITRULE), alpha(DEFAULT_ALPHA), minprop(
-        DEFAULT_MINPROP), num_random_splits(DEFAULT_NUM_RANDOM_SPLITS) {
+        DEFAULT_MINPROP), num_random_splits(DEFAULT_NUM_RANDOM_SPLITS), lowest_sc_depth(-1) {
 }
 
 Tree::Tree(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
@@ -68,7 +70,7 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
     std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
     bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
     double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-    std::vector<size_t>* sc_variable_IDs) {
+    std::vector<size_t>* sc_variable_IDs, int maxTreeHeight) {
 
   this->data = data;
   this->mtry = mtry;
@@ -105,11 +107,13 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
       this->sc_variable_IDs.insert(sc_variable_IDs->at(ii));
   }
 
+  max_tree_height = maxTreeHeight;
+
   initInternal();
 }
 
 // TODO: pass in vector of intersections as referece, make it a member function and dont pass dim_intervals
-std::vector<std::pair<size_t, size_t>> find_intersections( const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
+std::vector<std::pair<size_t, size_t>> Tree::find_intersections( size_t nodeID, const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
                                                            const std::vector<std::vector<std::pair<double, double>>> & dim_intervals  ) {
     std::vector<std::pair<size_t, size_t>> result;
     for( int l_idx = 0; l_idx < l_leaves.size(); ++l_idx ) {
@@ -120,26 +124,34 @@ std::vector<std::pair<size_t, size_t>> find_intersections( const std::vector<std
             std::vector<std::pair<double, double>> r_cell = dim_intervals[r_leafID]; // TODO: avoid copy
             bool intersect = true;
             for( int d_idx = 0; d_idx < l_cell.size(); ++d_idx )  {
-                double i0 = std::max( l_cell[d_idx].first, r_cell[d_idx].first);
-                double i1 = std::min( l_cell[d_idx].second, r_cell[d_idx].second);
-                if(i0 > i1) {
-                    intersect = false;
-                    /*
-                    std::cout << "does not intersection. dimension = " << d_idx << std::endl;
-                    std::cout << "left: ";
-                    for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
-                        std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
-                    }
-                    std::cout << std::endl;
 
-                    std::cout << "right: ";
-                    for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
-                        std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
-                    }
-                    std::cout << std::endl;
-                    */
-                    break;
+              // skip shape-constrained dimensions
+              if(sc_variable_IDs.find(d_idx) != sc_variable_IDs.end()) {
+                continue;
+              }
+
+              double i0 = std::max( l_cell[d_idx].first, r_cell[d_idx].first);
+              double i1 = std::min( l_cell[d_idx].second, r_cell[d_idx].second);
+              if(i0 >= i1) {
+                intersect = false;
+
+                /*
+                std::cout << "does not intersection. dimension = " << d_idx << std::endl;
+                std::cout << "left: ";
+                for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
+                  std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
                 }
+                std::cout << std::endl;
+
+                std::cout << "right: ";
+                for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
+                  std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
+                }
+                std::cout << std::endl;
+                */
+
+                break;
+              }
             }
             if( intersect ) {
                 result.push_back(std::pair<size_t, size_t>(l_leafID, r_leafID));
@@ -171,6 +183,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
 
   this->variable_importance = variable_importance;
 
+  int time_growTrees, time_goldiInt, time_underInt;
 // Bootstrap, dependent if weighted or not and with or without replacement
   if (case_weights->empty()) {
     if (sample_with_replacement) {
@@ -186,6 +199,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
   }
 
+  auto t1 = std::chrono::high_resolution_clock::now();
 // While not all nodes terminal, split next node
   size_t num_open_nodes = 1;
   size_t i = 0;
@@ -198,13 +212,11 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
     ++i;
   }
+  auto t2 = std::chrono::high_resolution_clock::now();
+  time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
 
   //std::cout << "number of nodes," + std::to_string(sampleIDs.size()) << std::endl;
 
-  // **********************************************************
-  // over-constrained estimator
-  // **********************************************************
- 
   // 1. level-order traversal of shape-constrained nodes
   if(!sc_variable_IDs.empty()) {
       std::vector<size_t> sc_nodes;
@@ -232,39 +244,36 @@ void Tree::grow(std::vector<double>* variable_importance) {
       }
 
       std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
-      //std::cout << "number of shape-constrained nodes," << sc_nodes.size() << std::endl;
+      num_sc_nodes = sc_nodes.size();
 
       // shape-constrained node id -> vector of leaf (node id, value) pairs
       optmap node_to_left;
       optmap node_to_right;
 
       // 2. for each optimization node, need vector of left/right leaf IDs and values
+      over_num_constraints = 0;
       for (auto& nn : sc_nodes) {
           std::vector<std::pair<size_t, double>> left  = get_leaves(child_nodeIDs[0][nn], node_to_left, node_to_right);
           node_to_left[nn] = left;
           std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
           node_to_right[nn] = right;
+          over_num_constraints += left.size() * right.size();
       }
+          
+         
+
+      // 3. perform exact optimization 
+      t1 = std::chrono::high_resolution_clock::now();
       std::vector<std::pair<size_t, size_t>> intersections;
       for (auto& nn : sc_nodes) {
-          //auto t1 = std::chrono::high_resolution_clock::now();
-          std::vector<std::pair<size_t, size_t>>   tmp_int = find_intersections( node_to_left[nn], node_to_right[nn], dim_intervals );
+          std::vector<std::pair<size_t, size_t>>   tmp_int = find_intersections( nn, node_to_left[nn], node_to_right[nn], dim_intervals );
           intersections.insert(intersections.end(), tmp_int.begin(), tmp_int.end() );
-          //auto t2 = std::chrono::high_resolution_clock::now();
-          /*
-          std::cout << "finding intersections took "
-              << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
-              << " seconds\n";
-              */
       }
+      t2 = std::chrono::high_resolution_clock::now();
+      time_goldiInt = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
 
-
-      /*
-      // 3. perform bottom-up over-constrained optimization
-      for (auto& nn : sc_nodes) {
-          over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
-      }
-      */
+      goldi_num_constraints = intersections.size();
+      //std::cout << "num goldilocks constraints: " << goldi_num_constraints << std::endl;
 
       std::set<size_t> leaf_ids;
       for (auto& nn : sc_nodes) {
@@ -276,7 +285,25 @@ void Tree::grow(std::vector<double>* variable_importance) {
         }
       }
 
-      goldilocks_opt(leaf_ids, intersections);
+      //goldilocks_opt(leaf_ids, intersections);
+
+      /*
+      // 3. perform bottom-up over-constrained optimization
+      for (auto& nn : sc_nodes) {
+          over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
+      }
+      */
+
+
+
+
+      /*
+      // 3. perform under-constrained optimization
+     t1 = std::chrono::high_resolution_clock::now();
+     under_constr_opt(intersections, dim_intervals);
+     t2 = std::chrono::high_resolution_clock::now();
+     time_underInt = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
+     */
 
       /*
       //std::cout << "total shape-constrained leaves," << leaf_ids.size() << std::endl;
@@ -287,10 +314,75 @@ void Tree::grow(std::vector<double>* variable_importance) {
          }	
          std::cout << std::endl;
          */
+
+     std::cout << "log,tree.height,under.num.constraints,goldi.num.constraints,over.num.constraints,num.sc.nodes,lowest.sc.depth,num.nodes,time.grow,time.goldiInt,time.underInt" << std::endl;
+     std::cout << "log," << tree_height << "," << under_num_constraints << "," << goldi_num_constraints << "," 
+       << over_num_constraints << "," << num_sc_nodes << "," << lowest_sc_depth  << "," << sampleIDs.size() 
+       << "," << time_growTrees << "," << time_goldiInt << "," << time_underInt << std::endl;
+       
   }
 // Delete sampleID vector to save memory
+  dim_intervals.clear();
   sampleIDs.clear();
+  underconstr_samples.clear();
   cleanUpInternal();
+}
+
+void Tree::under_constr_opt(const std::vector<std::pair<size_t, size_t>> &edges, const std::vector<std::vector<std::pair<double, double>>> & dim_intervals) {
+  std::vector<std::pair<size_t, size_t>> intersections;
+
+  std::unordered_map<size_t, std::unordered_set<size_t>> edge_map;
+  std::vector<std::pair<size_t, size_t>> intersections_unique;
+
+  for( auto & sID_to_splitNode: underconstr_info ) {
+    //std::cout << "sampleID: " << sID_to_splitNode.first << std::endl;
+    for( auto & splitNode : sID_to_splitNode.second ) {
+      //std::cout << "\tsplitNodeID: " << splitNode.first << std::endl;
+      if( splitNode.second[0].size() > 0 && splitNode.second[1].size() > 0 ) {
+        for( auto & l_leafID : splitNode.second[1] ) {
+          auto itr = edge_map.find(l_leafID);
+          if( itr == edge_map.end() ) {
+            edge_map[l_leafID] = std::unordered_set<size_t>();
+          }
+          for( auto & r_leafID : splitNode.second[0] ) {
+            intersections.push_back(std::pair<size_t,size_t>(l_leafID, r_leafID));
+            auto itr2 = edge_map[l_leafID].find(r_leafID);
+            if( itr2 == edge_map[l_leafID].end() ) {
+              edge_map[l_leafID].insert(r_leafID);
+              //std::cout << "splitNode: " << splitNode.first << " edge: (" << l_leafID << "," << r_leafID << ")" << std::endl;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for(auto & xx : edge_map ) {
+    for(auto & yy: xx.second) {
+      intersections_unique.push_back(std::pair<size_t,size_t>(xx.first, yy));
+      /*
+      bool found = std::find(edges.begin(), edges.end(), std::pair<size_t,size_t>(xx.first, yy)) != edges.end();
+      if( ! found ) {
+        size_t l_leafID = xx.first;
+        size_t r_leafID = yy;
+        std::cout << "left(" << l_leafID << "): ";
+        for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
+          std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "right(" << r_leafID << "): ";
+        for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
+          std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
+        }
+        std::cout << std::endl;
+      } 
+      */
+    }
+  }
+
+  under_num_constraints = intersections_unique.size();
+
 }
 
 void Tree::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std::pair<size_t, size_t>> & id_edges) {
@@ -312,9 +404,6 @@ void Tree::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std
     //std::cout << "constraint," << e.first << "," << e.second << std::endl;
     idx_edges.push_back(std::pair<size_t,size_t>(id_to_idx[e.first], id_to_idx[e.second]));
   }
-
-  std::cout << "num_constraints = " << idx_edges.size() << std::endl;
-
 
 
   size_t num_vars = v->size() + 2; // 2 dummy variables
@@ -358,15 +447,29 @@ void Tree::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std
   M->constraint("mono", Expr::mul(A,z1),Domain::greaterThan(0.));
 
   M->objective("obj", ObjectiveSense::Minimize, Expr::dot(c,z1));
-  M->solve();
-  //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
+  try {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    M->solve();
+    auto t2 = std::chrono::high_resolution_clock::now();
 
-  ndarray<double,1> xlvl   = *(x2->level());
-  for( auto p : id_to_idx ) {
-    double new_val = xlvl[p.second]*DIVIDE_MULT; 
-    double old_val = split_values[p.first];
-    //std::cout << "values," << split_values[p.first] << "," << xlvl[p.second]*1e6 << "," << fabs(new_val - old_val) <<  std::endl;
-    split_values[p.first] = new_val;
+    /*
+    std::cout << "mosek solve took "
+      << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
+      << " seconds\n";
+      */
+
+    //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
+
+    ndarray<double,1> xlvl   = *(x2->level());
+    for( auto p : id_to_idx ) {
+      double new_val = xlvl[p.second]*DIVIDE_MULT; 
+      double old_val = split_values[p.first];
+      //std::cout << "values," << split_values[p.first] << "," << xlvl[p.second]*1e6 << "," << fabs(new_val - old_val) <<  std::endl;
+      split_values[p.first] = new_val;
+    }
+
+  }  catch(const FusionException &e) {
+    std::cout << "caught an exception" << std::endl;
   }
 
 }
@@ -545,9 +648,6 @@ std::vector<std::pair<size_t, double>> Tree::get_leaves(size_t node_id, const op
         rightData         = get_leaves(right_id, leftmap, rightmap);
     }
        
-
-    
-
     result.insert(result.end(), leftData.begin(), leftData.end());
     result.insert(result.end(), rightData.begin(), rightData.end());
 
@@ -608,8 +708,6 @@ void Tree::predict(const Data* prediction_data, bool oob_prediction) {
     }
 
     prediction_terminal_nodeIDs[i] = nodeID;
-    //if(!oob_prediction)
-    //    std::cout << "prediction node: " << nodeID << " " << split_values[nodeID] << std::endl;
   }
 }
 
@@ -686,7 +784,23 @@ bool Tree::splitNode(size_t nodeID) {
 
 // Call subclass method, sets split_varIDs and split_values
   bool stop = splitNodeInternal(nodeID, possible_split_varIDs);
+
+  if(node_depth[nodeID] == max_tree_height) {
+    stop = true;
+  }
+
   if (stop) {
+    for (auto& s : underconstr_samples[nodeID]) {
+      for( auto & splits : s.split_info ) {
+        if(  underconstr_info[s.sampleID][splits.first].size() != 2 )  {
+          underconstr_info[s.sampleID][splits.first].resize(2);
+        }
+        underconstr_info[s.sampleID][splits.first][splits.second].push_back(nodeID);
+      }
+    }
+    if( node_depth[nodeID] > tree_height ) {
+      tree_height = node_depth[nodeID];
+    }
     // Terminal node
     return true;
   }
@@ -700,37 +814,50 @@ bool Tree::splitNode(size_t nodeID) {
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
   dim_intervals[left_child_nodeID][split_varID].second = split_value;
+  node_depth[left_child_nodeID] = node_depth[nodeID]+1;
 
   size_t right_child_nodeID = sampleIDs.size();
   child_nodeIDs[1][nodeID] = right_child_nodeID;
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
   dim_intervals[right_child_nodeID][split_varID].first = split_value;
+  node_depth[right_child_nodeID] = node_depth[nodeID]+1;
 
-  /*
-  std::cout << "split_varID: " << split_varID << std::endl;
-  std::cout << "split_value: " << split_value << std::endl;
-  std::cout << "parent: ";
-  for( size_t i = 0; i < dim_intervals[nodeID].size(); ++i ) {
-      std::cout << "[" << i << ": (" << dim_intervals[nodeID][i].first << "," << dim_intervals[nodeID][i].second << ")] ";
+  auto sc_itr      = sc_variable_IDs.find(split_varID);
+  bool is_sc_split = sc_itr != sc_variable_IDs.end();
+  if(is_sc_split && lowest_sc_depth == -1) {
+    lowest_sc_depth = node_depth[nodeID];
   }
-  std::cout << std::endl;
-
-  std::cout << "left: ";
-  for( size_t i = 0; i < dim_intervals[left_child_nodeID].size(); ++i ) {
-      std::cout << "[" << i << ": (" << dim_intervals[left_child_nodeID][i].first << "," << dim_intervals[left_child_nodeID][i].second << ")] ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "right: ";
-  for( size_t i = 0; i < dim_intervals[right_child_nodeID].size(); ++i ) {
-      std::cout << "[" << i << ": (" << dim_intervals[right_child_nodeID][i].first << "," << dim_intervals[right_child_nodeID][i].second << ")] ";
-  }
-  std::cout << std::endl;
-  */
-
 // For each sample in node, assign to left or right child
   if ((*is_ordered_variable)[split_varID]) {
+    for (auto& s : underconstr_samples[nodeID]) {
+      if (data->get(s.sampleID, split_varID) <= split_value) {
+        if(is_sc_split) {
+          Sample right(s.sampleID, s.split_info);
+          right.split_info.push_back(std::pair<size_t,bool>(nodeID, false));
+          underconstr_samples[right_child_nodeID].push_back(right);
+
+          Sample left(s.sampleID, s.split_info);
+          left.split_info.push_back(std::pair<size_t,bool>(nodeID, true));
+          underconstr_samples[left_child_nodeID].push_back(left);
+        } else {
+          underconstr_samples[left_child_nodeID].push_back(s);
+        }
+      } else {
+        if(is_sc_split) {
+          Sample right(s.sampleID, s.split_info);
+          right.split_info.push_back(std::pair<size_t,bool>(nodeID, false));
+          underconstr_samples[right_child_nodeID].push_back(right);
+
+          Sample left(s.sampleID, s.split_info);
+          left.split_info.push_back(std::pair<size_t,bool>(nodeID, true));
+          underconstr_samples[left_child_nodeID].push_back(left);
+        } else {
+          underconstr_samples[right_child_nodeID].push_back(s);
+        }
+      }
+    }
+
     // Ordered: left is <= splitval and right is > splitval
     for (auto& sampleID : sampleIDs[nodeID]) {
       if (data->get(sampleID, split_varID) <= split_value) {
@@ -739,7 +866,20 @@ bool Tree::splitNode(size_t nodeID) {
         sampleIDs[right_child_nodeID].push_back(sampleID);
       }
     }
+
   } else {
+    for (auto& s : underconstr_samples[nodeID]) {
+      double level    = data->get(s.sampleID, split_varID);
+      size_t factorID = floor(level) - 1;
+      size_t splitID  = floor(split_value);
+
+      // Left if 0 found at position factorID
+      if (!(splitID & (1 << factorID))) {
+        underconstr_samples[left_child_nodeID].push_back(s);
+      } else {
+        underconstr_samples[right_child_nodeID].push_back(s);
+      }
+    }
     // Unordered: If bit at position is 1 -> right, 0 -> left
     for (auto& sampleID : sampleIDs[nodeID]) {
       double level = data->get(sampleID, split_varID);
@@ -755,6 +895,8 @@ bool Tree::splitNode(size_t nodeID) {
     }
   }
 
+  underconstr_samples[nodeID].clear(); // remove sampleIDs for all non-leaves to conserve memory
+
 // No terminal node
   return false;
 }
@@ -765,6 +907,8 @@ void Tree::createEmptyNode() {
   child_nodeIDs[0].push_back(0);
   child_nodeIDs[1].push_back(0);
   sampleIDs.push_back(std::vector<size_t>());
+  underconstr_samples.push_back(std::vector<Sample>());
+  node_depth.push_back(0);
 
   if( dim_intervals.size() == 0 ) {
       dim_intervals.push_back(std::vector<std::pair<double,double>>());
@@ -839,6 +983,7 @@ void Tree::bootstrap() {
 
 // Reserve space, reserve a little more to be save)
   sampleIDs[0].reserve(num_samples_inbag);
+  underconstr_samples[0].reserve(num_samples_inbag);
   oob_sampleIDs.reserve(num_samples * (exp(-sample_fraction) + 0.1));
 
   std::uniform_int_distribution<size_t> unif_dist(0, num_samples - 1);
@@ -846,12 +991,25 @@ void Tree::bootstrap() {
 // Start with all samples OOB
   inbag_counts.resize(num_samples, 0);
 
+  std::unordered_set<size_t> ids;
 // Draw num_samples samples with replacement (num_samples_inbag out of n) as inbag and mark as not OOB
   for (size_t s = 0; s < num_samples_inbag; ++s) {
     size_t draw = unif_dist(random_number_generator);
     sampleIDs[0].push_back(draw);
+
+    auto itr = ids.find(draw);
+    if( itr == ids.end() ) {
+      Sample tmp_sample(draw);
+      underconstr_samples[0].push_back(tmp_sample);
+      ids.insert(draw);
+    }
+
+    node_depth.push_back(0);
+    tree_height = 0;
+
     ++inbag_counts[draw];
   }
+
 
 // Save OOB samples
   for (size_t s = 0; s < inbag_counts.size(); ++s) {
@@ -873,6 +1031,7 @@ void Tree::bootstrapWeighted() {
 
 // Reserve space, reserve a little more to be save)
   sampleIDs[0].reserve(num_samples_inbag);
+  underconstr_samples[0].reserve(num_samples_inbag);
   oob_sampleIDs.reserve(num_samples * (exp(-sample_fraction) + 0.1));
 
   std::discrete_distribution<> weighted_dist(case_weights->begin(), case_weights->end());
@@ -880,12 +1039,22 @@ void Tree::bootstrapWeighted() {
 // Start with all samples OOB
   inbag_counts.resize(num_samples, 0);
 
+  std::unordered_set<size_t> ids;
 // Draw num_samples samples with replacement (n out of n) as inbag and mark as not OOB
   for (size_t s = 0; s < num_samples_inbag; ++s) {
     size_t draw = weighted_dist(random_number_generator);
     sampleIDs[0].push_back(draw);
+
+    auto itr = ids.find(draw);
+    if( itr == ids.end() ) {
+      Sample tmp_sample(draw);
+      underconstr_samples[0].push_back(tmp_sample);
+      ids.insert(draw);
+    }
     ++inbag_counts[draw];
   }
+  node_depth.push_back(0);
+  tree_height = 0;
 
   // Save OOB samples. In holdout mode these are the cases with 0 weight.
   if (holdout) {
