@@ -53,7 +53,7 @@ public:
 
   const std::vector<double>& getPrediction(size_t sampleID) const {
     size_t terminal_nodeID = prediction_terminal_nodeIDs[sampleID];
-    return terminal_class_counts[terminal_nodeID];
+    return terminal_class_counts[terminal_nodeID]; // these are freqs (not counts)
   }
 
   size_t getPredictionTerminalNodeID(size_t sampleID) const {
@@ -67,6 +67,8 @@ public:
 private:
   bool splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
   void createEmptyNodeInternal();
+  void reshape();
+  void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges);
 
   double computePredictionAccuracyInternal();
 

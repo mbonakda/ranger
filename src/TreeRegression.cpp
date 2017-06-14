@@ -762,7 +762,7 @@ void TreeRegression::reshape() {
     }
   }
 
-  //goldilocks_opt(leaf_ids, intersections);
+  goldilocks_opt(leaf_ids, intersections);
 
   /*
   // 3. perform bottom-up over-constrained optimization
