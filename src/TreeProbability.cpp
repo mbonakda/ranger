@@ -698,6 +698,7 @@ void TreeProbability::reshape() {
     std::cout << "reshaping only supports 2 classes" << std::endl;
     exit(1);
   }
+  reshape_class_idx = find(class_values->begin(), class_values->end(), 2) - class_values->begin();
 
   // 1. level-order traversal of shape-constrained nodes
   std::vector<size_t> sc_nodes;
@@ -801,7 +802,7 @@ void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std:
 
   size_t idx = 0;
   for( auto l : leaves ) {
-    (*v)[idx]    = terminal_class_counts[l][1];
+    (*v)[idx]    = terminal_class_counts[l][reshape_class_idx];
     id_to_idx[l] = idx;
     idx++;
   }
@@ -870,10 +871,11 @@ void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std:
     ndarray<double,1> xlvl   = *(x2->level());
     for( auto p : id_to_idx ) {
       double new_val = xlvl[p.second];
-      double old_val = terminal_class_counts[p.first][1];
+      double old_val = terminal_class_counts[p.first][reshape_class_idx];
       //std::cout << "values," << split_values[p.first] << "," << xlvl[p.second]*1e6 << "," << fabs(new_val - old_val) <<  std::endl;
-      terminal_class_counts[p.first][1] = new_val;
-      terminal_class_counts[p.first][0] = 1-new_val;
+      terminal_class_counts[p.first][reshape_class_idx] = new_val;
+      uint other_idx = reshape_class_idx == 0 ? 1 : 0;
+      terminal_class_counts[p.first][other_idx] = 1-new_val;
     }
 
   }  catch(const FusionException &e) {
