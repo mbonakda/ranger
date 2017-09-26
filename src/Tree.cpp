@@ -189,8 +189,10 @@ void Tree::grow(std::vector<double>* variable_importance) {
       bootstrapWithoutReplacementWeighted();
     }
   }
+  
+  post_bootstrap_init();
 
-  auto t1 = std::chrono::high_resolution_clock::now();
+    auto t1 = std::chrono::high_resolution_clock::now();
 // While not all nodes terminal, split next node
   size_t num_open_nodes = 1;
   size_t i = 0;

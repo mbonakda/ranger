@@ -36,6 +36,7 @@
 #include "ForestRegression.h"
 #include "ForestSurvival.h"
 #include "ForestProbability.h"
+#include "ForestDiscreteChoice.h"
 #include "Data.h"
 #include "DataChar.h"
 #include "DataDouble.h"
@@ -121,6 +122,10 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     case TREE_PROBABILITY:
       forest = new ForestProbability;
       break;
+    case TREE_DISCRETE_CHOICE:
+      std::cout << "ForestType: ForestDiscreteChoice" << std::endl;
+      forest = new ForestDiscreteChoice;
+      break;
     }
 
     ImportanceMode importance_mode = (ImportanceMode) importance_mode_r;
@@ -162,6 +167,9 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
         loaded_forest["terminal.class.counts"];
         ((ForestProbability*) forest)->loadForest(dependent_varID, num_trees, child_nodeIDs, split_varIDs, split_values,
             class_values, terminal_class_counts, is_ordered);
+      } else if (treetype == TREE_DISCRETE_CHOICE) {
+        ((ForestDiscreteChoice*) forest)->loadForest(dependent_varID, num_trees, child_nodeIDs, split_varIDs, split_values,
+            is_ordered);
       }
     }
 

@@ -190,7 +190,8 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                    num.threads = NULL, save.memory = FALSE,
                    verbose = TRUE, seed = NULL, 
                    dependent.variable.name = NULL, status.variable.name = NULL, 
-                   classification = NULL, sc.variable.names = NULL, max.tree.height = NULL ) {
+                   classification = NULL, sc.variable.names = NULL, max.tree.height = NULL,
+                   discrete.choice = FALSE ) {
   
   ## GenABEL GWA data
   if ("gwaa.data" %in% class(data)) {
@@ -255,6 +256,8 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       treetype <- 1
     } else if (probability) {
       treetype <- 9
+    } else if (discrete.choice) {
+      treetype <- 4
     } else {
       treetype <- 3
     }

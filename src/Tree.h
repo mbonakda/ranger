@@ -52,6 +52,7 @@ using namespace monty;
 // shape-constrained node id -> vector of leaf (node id, value) pairs
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
 
+
 // for underconstrained estimator
 // sampleID --> splitNode --> Left/Right --> leafID
 typedef std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> underconstr_map;
@@ -89,6 +90,8 @@ public:
       std::vector<size_t>* sc_variable_IDs, int maxTreeHeight);
 
   virtual void initInternal() = 0;
+
+  virtual void post_bootstrap_init() {}
 
   void grow(std::vector<double>* variable_importance);
 
@@ -241,6 +244,12 @@ protected:
   uint num_random_splits;
 
   std::unordered_set<size_t> sc_variable_IDs;;
+
+  // discrete-choice agent maps
+  //   agentID -> [sampleIDs] 
+  std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
+  // sampleID -> agentID (by idx)
+  std::vector<size_t> agentIDs;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Tree);
