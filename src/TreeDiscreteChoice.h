@@ -67,19 +67,7 @@ private:
 
   // Called by splitNodeInternal(). Sets split_varIDs and split_values.
   bool findBestSplit(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
-  void findBestSplitValueSmallQ(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
-      double& best_value, size_t& best_varID, double& best_decrease);
-  void findBestSplitValueLargeQ(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
-      double& best_value, size_t& best_varID, double& best_decrease);
-  void findBestSplitValueUnordered(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
-      double& best_value, size_t& best_varID, double& best_decrease);
-
-  bool findBestSplitMaxstat(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
-
-  bool findBestSplitExtraTrees(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
-  void findBestSplitValueExtraTrees(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
-      double& best_value, size_t& best_varID, double& best_decrease);
-  void findBestSplitValueExtraTreesUnordered(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
+  void findBestSplitValue(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
       double& best_value, size_t& best_varID, double& best_decrease);
 
   void addImpurityImportance(size_t nodeID, size_t varID, double decrease);
@@ -100,11 +88,24 @@ private:
 
   void post_bootstrap_init();
 
-  // discrete-choice agent maps
+  double dcrf_numItems;
+  double dcrf_numAgents;
+
+  std::unordered_set<size_t> agentIDs;
+  std::unordered_set<size_t> itemIDs;
+
   //   agentID -> [sampleIDs] 
   std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
   //   sampleID -> agentID 
   std::unordered_map<size_t, size_t> sampleID_to_agentIDs; 
+  // log-lik contribution of each node
+  std::vector<double> llik;
+  // estimated utility at each node
+  std::vector<double> util;
+  // agentID -> all leafIDs that currently have a sample from that agent
+  std::unordered_map<size_t, std::vector<size_t>> agentID_to_leafIDs; 
+  // sampleID -> leafID
+  std::unordered_map<size_t, size_t> sampleID_to_leafID; 
 
   DISALLOW_COPY_AND_ASSIGN(TreeDiscreteChoice);
 };
