@@ -181,7 +181,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   std::cout << "findBestSplit" << std::endl;
 
   size_t num_samples_node = sampleIDs[nodeID].size();
-  double best_decrease = -1;
+  double best_increase = -1;
   size_t best_varID = 0;
   double best_value = 0;
 
@@ -195,7 +195,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   for (auto& varID : possible_split_varIDs) {
     // Find best split value, if ordered consider all values as split values, else all 2-partitions
     if ((*is_ordered_variable)[varID]) {
-      findBestSplitValue(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_decrease);
+      findBestSplitValue(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_increase);
     } else {
       std::cout << "ERROR - can only handle ordered covariates for now" << std::endl;
       exit(0);
@@ -203,7 +203,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   }
 
   // Stop if no good split found
-  if (best_decrease < 0) {
+  if (best_increase < 0) {
     return true;
   }
 
@@ -215,7 +215,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 }
 
 void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
-    double& best_value, size_t& best_varID, double& best_decrease) {
+    double& best_value, size_t& best_varID, double& best_increase) {
 
   std::cout << "findBestSplitValue" << std::endl;
   // Set counters to 0
@@ -292,16 +292,18 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     }
   }
 
+
   std::cout << "curr likelihood = " << curr_llik << std::endl;
-
   double V_star  = util[nodeID];
-  double curr_VR = util[nodeID] - 0.01;
-  double curr_VL = util[nodeID] + 0.05;
 
-  std::cout << "VL= " << curr_VL << std::endl;
-  std::cout << "VR= " << curr_VR << std::endl;
 
   for (size_t i = 0; i < num_unique - 1; ++i) {
+
+    std::cout << "progress: " << i << "/" << num_unique << std::endl;
+    double curr_VR = util[nodeID];// - 0.01;
+    double curr_VL = util[nodeID];// + 0.05;
+    std::cout << "VL= " << curr_VL << std::endl;
+    std::cout << "VR= " << curr_VR << std::endl;
 
     // Stop if nothing here
     if (counter[i] == 0) {
@@ -332,7 +334,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       break;
     }
 
-    std::cout << "index = " << i << "\tc_l = " << c_l << "\tc_r = " << c_r << std::endl;
+
     /*****************************************************************
     // Maximum Likelihood
     *****************************************************************/
@@ -344,6 +346,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       double dVL = c_l;
       double dVR = c_r;
       double dVL2 = 0, dVR2 = 0, dVLVR = 0;
+      std::cout << "c_l=" << c_l << "\tc_r=" << c_r << std::endl;
       for(auto a_id: node_agentIDs) {
 
         double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
@@ -362,40 +365,64 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
 
       double dtmnt = 1.0 / (dVL2*dVR2 - dVLVR*dVLVR);
 
-      // newton step
-      curr_VL      -= dtmnt*((dVR2 + 0.01) *dVL - dVLVR*dVR);
-      curr_VR      -= dtmnt*(-dVLVR*dVL + (dVL2 + 0.01)*dVR); 
-
       /*
-      // gradient step
-      curr_VL      += dVL;
-      curr_VR      += dVR;
+      // newton step
+      curr_VL      -= dtmnt*((dVR2 + 1.5) *dVL - dVLVR*dVR);
+      curr_VR      -= dtmnt*(-dVLVR*dVL + (dVL2 + 1.5)*dVR); 
       */
 
-      // compute current likelihood
-      llik = 0;
-      for(auto a_id: node_agentIDs) {
-        std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
-        double Z_curr = agent_Z[a_id] - n_l[a_id]*V_star + n_l[a_id]*curr_VL - n_r[a_id]*V_star + n_r[a_id]*curr_VR;
-        //TODO: only need the agent's sampleIDs with response = 1
-        for(auto s_id : a_sIDs) {
-          double response = data->get(s_id, dependent_varID);
-          if( response != 0 ) {
-            size_t l_id = sampleID_to_leafID[s_id];
-            if( l_id == nodeID ) {
-              const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
-              if(is_r) {
-                llik += curr_VR - log(Z_curr);
+
+      // first split: line search with gradient descent
+      std::cout << "line search ---------------- " << std::endl;
+      double step_size = 2;
+      double decay     = 0.5;
+      double c         = 0.8; // is this necessary?
+      double LINE_SEARCH_THRESH = 0;
+      double ls_VL = curr_VL;
+      double ls_VR = curr_VR;
+      do {
+        ls_VL = curr_VL;
+        ls_VR = curr_VR;
+        step_size = step_size*decay;
+        // gradient step
+        ls_VL      += step_size*dVL;
+        ls_VR      += step_size*dVR;
+
+        LINE_SEARCH_THRESH = c*step_size*(dVL*dVL + dVR*dVR);
+        
+
+        // compute current likelihood
+        llik = 0;
+        for(auto a_id: node_agentIDs) {
+          std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
+          double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(ls_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(ls_VR);
+          //std::cout << "agentID=" << a_id << "\tZ_curr=" << Z_curr << std::endl;
+          //TODO: only need the agent's sampleIDs with response = 1
+          for(auto s_id : a_sIDs) {
+            double response = data->get(s_id, dependent_varID);
+            if( response != 0 ) {
+              size_t l_id = sampleID_to_leafID[s_id];
+              if( l_id == nodeID ) {
+                const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
+                if(is_r) {
+                  llik += ls_VR - log(Z_curr);
+                } else {
+                  llik += ls_VL - log(Z_curr);
+                }
+                //std::cout << "is_right=" << is_r << "\tls_VR=" << ls_VR << "\tls_VL=" << ls_VL << "\tllik update=" << llik << std::endl;
               } else {
-                llik += curr_VL - log(Z_curr);
+                llik += util[l_id] - log(Z_curr);
               }
-            } else {
-              llik += util[l_id] - log(Z_curr);
-            }
-            break;
-          } 
+              break;
+            } 
+          }
         }
-      }
+        std::cout << "llik=" << llik << "\tprev_llik=" << prev_llik << "\tdiff=" << llik - prev_llik << "\tthresh=" << LINE_SEARCH_THRESH 
+                 <<  "\tcurr_VL=" << curr_VL << "\tls_VL=" << ls_VL <<  "\tcurr_VR=" << curr_VR << "\tls_VR=" << ls_VR << std::endl;
+      } while( (llik - prev_llik) < LINE_SEARCH_THRESH );
+      curr_VL = ls_VL;
+      curr_VR = ls_VR;
+      std::cout << "exit line search ---------------- " << std::endl;
 
       std::cout << "dVL = " << dVL << std::endl;
       std::cout << "dVR = " << dVR << std::endl;
@@ -407,16 +434,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       std::cout << "llik - prev_llik = " << llik - prev_llik << std::endl;
       std::cout << "VL= " << curr_VL << std::endl;
       std::cout << "VR= " << curr_VR << std::endl;
-   } while( llik - prev_llik > 1 ); 
+   } while( llik - prev_llik > 0.001 ); 
     /*****************************************************************/
-    exit(1);
-
-
-
-    double sum_right = sum_node - sum_left;
-    double decrease = sum_left * sum_left / (double) n_left + sum_right * sum_right / (double) n_right;
+    double increase = llik - curr_llik;
     // If better than before, use this
-    if (decrease > best_decrease) {
+    if (increase > best_increase ) {
+      std::cout << "new best increase=" << increase << "\tindex=" << i << std::endl;
       // Find next value in this node
       size_t j = i + 1;
       while(j < num_unique && counter[j] == 0) {
@@ -424,11 +447,14 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       }
 
       // Use mid-point split
-      best_value = (data->getUniqueDataValue(varID, i) + data->getUniqueDataValue(varID, j)) / 2;
-      best_varID = varID;
-      best_decrease = decrease;
+      best_value    = (data->getUniqueDataValue(varID, i) + data->getUniqueDataValue(varID, j)) / 2;
+      best_varID    = varID;
+      best_increase = increase;
+    } else {
+      std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
   }
+  exit(-1);
 }
 
 
