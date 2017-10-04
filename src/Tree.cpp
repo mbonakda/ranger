@@ -190,6 +190,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
   }
   
+  std::cout << "calling post_bootstrap_init()" << std::endl;
   post_bootstrap_init();
 
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -673,8 +674,10 @@ bool Tree::splitNode(size_t nodeID) {
     for (auto& sampleID : sampleIDs[nodeID]) {
       if (data->get(sampleID, split_varID) <= split_value) {
         sampleIDs[left_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = left_child_nodeID;
       } else {
         sampleIDs[right_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = right_child_nodeID;
       }
     }
 
@@ -700,8 +703,10 @@ bool Tree::splitNode(size_t nodeID) {
       // Left if 0 found at position factorID
       if (!(splitID & (1 << factorID))) {
         sampleIDs[left_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = left_child_nodeID;
       } else {
         sampleIDs[right_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = right_child_nodeID;
       }
     }
   }

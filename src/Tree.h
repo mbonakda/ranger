@@ -91,7 +91,12 @@ public:
 
   virtual void initInternal() = 0;
 
-  virtual void post_bootstrap_init() {}
+  virtual void post_bootstrap_init() {
+    std::cout << "Tree::post_bootstrap_init()" << std::endl;
+    for(auto s_ID : sampleIDs[0]) {
+      sampleID_to_leafID[s_ID] = 0;
+    }
+  }
 
   void grow(std::vector<double>* variable_importance);
 
@@ -246,10 +251,10 @@ protected:
   std::unordered_set<size_t> sc_variable_IDs;;
 
   // discrete-choice agent maps
-  //   agentID -> [sampleIDs] 
-  std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
   // sampleID -> agentID (by idx)
   std::vector<size_t> agentIDs;
+  // sampleID -> leafID
+  std::unordered_map<size_t, size_t> sampleID_to_leafID; 
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Tree);
