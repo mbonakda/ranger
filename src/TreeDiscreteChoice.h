@@ -105,7 +105,7 @@ private:
   // agentID -> all leafIDs that currently have a sample from that agent
   std::unordered_map<size_t, std::vector<size_t>> agentID_to_leafIDs; 
   // parent nodeID -> left [0] or right [1] leaf values
-  std::vector<std::vector<size_t>> child_util;
+  std::vector<std::vector<double>> child_util;
 
   size_t num_splits;
 
