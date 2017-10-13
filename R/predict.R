@@ -220,6 +220,8 @@ predict.ranger.forest <- function(object, data, predict.all = FALSE,
     treetype <- 1
   } else if (forest$treetype == "Regression") {
     treetype <- 3
+  } else if (forest$treetype == "Discrete Choice") {
+    treetype <- 4
   } else if (forest$treetype == "Survival") {
     treetype <- 5
   } else if (forest$treetype == "Probability estimation") {

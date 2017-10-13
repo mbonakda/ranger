@@ -92,7 +92,6 @@ public:
   virtual void initInternal() = 0;
 
   virtual void post_bootstrap_init() {
-    std::cout << "Tree::post_bootstrap_init()" << std::endl;
     for(auto s_ID : sampleIDs[0]) {
       sampleID_to_leafID[s_ID] = 0;
     }

@@ -68,7 +68,6 @@ void TreeDiscreteChoice::initInternal() {
 }
 
 void TreeDiscreteChoice::post_bootstrap_init() {
-  std::cout << "TreeDiscreteChoice::post_bootstrap_init()" << std::endl;
   size_t agentID_varID = data->getVariableID("agentID");
   Tree::post_bootstrap_init();
   for (auto& sampleID : sampleIDs[0]) {
@@ -100,9 +99,6 @@ void TreeDiscreteChoice::post_bootstrap_init() {
   util.push_back(0);
   // TODO: this likelihood calculation is incorrect when bootstrapping
   llik.push_back(-dcrf_numAgents*log((double)dcrf_numItems));
-  std::cout << "numAgents:\t" << dcrf_numAgents << std::endl;
-  std::cout << "numItems:\t" << dcrf_numItems << std::endl;
-  std::cout << "initial log-lik: " << llik[0] << std::endl;
 
 }
 
@@ -123,7 +119,7 @@ void TreeDiscreteChoice::appendToFileInternal(std::ofstream& file) {
 
 bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
 
-  std::cout << "considered for split number " << num_splits << std::endl;
+  //std::cout << "considered for split number " << num_splits << std::endl;
 
   //TODO: do better here
   size_t agentID_varID = data->getVariableID("agentID");
@@ -131,11 +127,17 @@ bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& p
 
   // Check node size, stop if maximum reached
   if (sampleIDs[nodeID].size() <= min_node_size) {
-    std::cout << "reached min node size" << std::endl;
+    //std::cout << "reached min node size" << std::endl;
+    split_values[nodeID] = util[nodeID];
+    return true;
+  }
+  
+  if(node_depth[nodeID] == max_tree_height) {
     split_values[nodeID] = util[nodeID];
     return true;
   }
 
+  /*
   // Check if node is pure and set split_value to estimate and stop if pure
   bool pure = true;
   double pure_value = 0;
@@ -152,6 +154,7 @@ bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& p
     std::cout << "PURE NODE" << std::endl;
     return true;
   }
+  */
 
   // Find best split, stop if no decrease of impurity
   bool stop;
@@ -222,7 +225,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 
   // Stop if no good split found
   if (best_increase <= 0) {
-    std::cout << "no good splits" << std::endl;
+    //std::cout << "no good splits" << std::endl;
     return true;
   }
 
@@ -315,21 +318,19 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
   }
 
 
-  std::cout << "curr likelihood = " << curr_llik << std::endl;
   double V_star  = util[nodeID];
 
 
   for (size_t i = 0; i < num_unique - 1; ++i) {
 
-    std::cout << "progress: " << i << "/" << num_unique << std::endl;
+    //std::cout << "progress: " << i << "/" << num_unique << std::endl;
     double curr_VL = util[nodeID];
     double curr_VR = V_star - curr_VL;
-    std::cout << "start_VL= " << curr_VL << std::endl;
-    std::cout << "start_VR= " << curr_VR << std::endl;
+    //std::cout << "start_VL= " << curr_VL << std::endl;
+    //std::cout << "start_VR= " << curr_VR << std::endl;
 
     // Stop if nothing here
     if (counter[i] == 0) {
-      std::cout << "no samples at this index" << std::endl;
       continue;
     }
     
@@ -417,6 +418,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
         }
       }
 
+      /*
       std::cout << "split_num=" << num_splits << "\titer_num=" << num_newton_iter << "\tc_l=" << c_l << "\tc_r=" << c_r 
       << "\tdVL=" << dVL 
       << "\t1/dVL2=" << 1.0/dVL2
@@ -426,12 +428,13 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       << "\tdelta_llik=" << llik - prev_llik
       << "\tcurr_VL= " << curr_VL 
       << "\tcurr_VR= " << curr_VR << std::endl;
+      */
    } while( fabs(llik - prev_llik) > 0.001 );// && abs(deltaVL) > 0.001); 
     /*****************************************************************/
     double increase = llik - curr_llik;
     // If better than before, use this
     if (increase > best_increase ) {
-      std::cout << "new best increase=" << increase << "\tindex=" << i << std::endl;
+      //std::cout << "new best increase=" << increase << "\tindex=" << i << std::endl;
       // Find next value in this node
       size_t j = i + 1;
       while(j < num_unique && counter[j] == 0) {
@@ -445,7 +448,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       child_util[0][nodeID] = curr_VL;
       child_util[1][nodeID] = curr_VR;
     } else {
-      std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
+      //std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
   }
 }

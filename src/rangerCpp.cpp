@@ -55,12 +55,16 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
     uint num_random_splits, std::vector<std::string> sc_variable_names, int max_tree_height) {
 
-  if(!prediction_mode)
-    std::cout << "-- running shape constrained version --" << std::endl;
+  /*
+     if(!prediction_mode)
+     std::cout << "-- running shape constrained version --" << std::endl;
+     */
 
   if(sc_variable_names.size() == 1 && sc_variable_names[0] == "") {
+    /*
       if(!prediction_mode)
           std::cout << "no shape constrained variables" << std::endl;
+          */
       sc_variable_names.clear(); // TODO: better way of handling no shape-contraints
   } else {
       for( auto & s : sc_variable_names ) {
@@ -123,7 +127,6 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
       forest = new ForestProbability;
       break;
     case TREE_DISCRETE_CHOICE:
-      std::cout << "ForestType: ForestDiscreteChoice" << std::endl;
       forest = new ForestDiscreteChoice;
       break;
     }

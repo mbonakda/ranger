@@ -659,6 +659,8 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
     result$treetype <- "Classification"
   } else if (treetype == 3) {
     result$treetype <- "Regression"
+  } else if (treetype == 4) {
+    result$treetype <- "Discrete Choice"
   } else if (treetype == 5) {
     result$treetype <- "Survival"
   } else if (treetype == 9) {

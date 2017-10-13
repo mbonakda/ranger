@@ -190,7 +190,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
   }
   
-  std::cout << "calling post_bootstrap_init()" << std::endl;
+  //std::cout << "calling post_bootstrap_init()" << std::endl;
   post_bootstrap_init();
 
     auto t1 = std::chrono::high_resolution_clock::now();
