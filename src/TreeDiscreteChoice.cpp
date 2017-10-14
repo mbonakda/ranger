@@ -471,3 +471,48 @@ void TreeDiscreteChoice::addImpurityImportance(size_t nodeID, size_t varID, doub
   }
   (*variable_importance)[tempvarID] += best_decrease;
 }
+
+void TreeDiscreteChoice::grow_post_process(){
+
+    std::unordered_map<size_t, double> agent_Z;
+  
+    std::unordered_map<size_t, double> leafID_to_partial;
+
+    std::vector<double> cur_util = util;
+
+    double stepsize = 1;
+    double alpha = 0.3;
+    double beta = 0.8;
+
+    std::vector<double> 
+    
+    
+    do {
+    
+	for(auto a_id: agentIDs) {
+	    for(auto s_id: agentID_to_sampleIDs[a_id]) {
+		size_t leaf_id = sampleID_to_leafID[s_id];
+		agent_Z[a_id] += exp(cur_util[leaf_id]);
+	    }
+	}
+
+	for (auto a_id: agentIDs) {
+	    for(auto s_id: agentID_to_sampleIDs[a_id]) {
+
+		size_t leaf_id = sampleID_to_leafID[s_id];
+
+		double response = data->get(s_id, dependent_varID);
+		leafID_to_partial[leaf_id] += response - exp(cur_util[leaf_id])/agent_Z[a_id];
+	    }
+	}
+	
+	while( TODO:armijo ){
+	    stepsize = stepsize * beta;
+	}
+
+	
+	
+    
+    } while ( TODO:fill convergence criterion ) ;
+    
+}

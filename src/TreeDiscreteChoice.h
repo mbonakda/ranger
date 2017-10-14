@@ -85,6 +85,7 @@ private:
   double* sums;
 
   void post_bootstrap_init();
+  void grow_post_process();
 
   double dcrf_numItems;
   double dcrf_numAgents;
