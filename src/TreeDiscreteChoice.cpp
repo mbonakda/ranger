@@ -451,6 +451,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       //std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
   }
+
+
 }
 
 
@@ -472,47 +474,119 @@ void TreeDiscreteChoice::addImpurityImportance(size_t nodeID, size_t varID, doub
   (*variable_importance)[tempvarID] += best_decrease;
 }
 
+// adjust all leaves 
 void TreeDiscreteChoice::grow_post_process(){
 
     std::unordered_map<size_t, double> agent_Z;
-  
     std::unordered_map<size_t, double> leafID_to_partial;
+    std::set<size_t>                   leafIDs;
+    std::vector<double>                curr_util = util;
 
-    std::vector<double> cur_util = util;
 
-    double stepsize = 1;
-    double alpha = 0.3;
-    double beta = 0.8;
+    // get leaf IDs
+    for(auto a_id: agentIDs) {
+        for(auto s_id: agentID_to_sampleIDs[a_id]) {
+            size_t leaf_id = sampleID_to_leafID[s_id];
+            leafIDs.insert(leaf_id);
+        }
+    }
 
-    std::vector<double> 
-    
-    
+    // compute current state
+    compute_partition_func(agent_Z, util);
+    double curr_llik = compute_log_likelihood(agent_Z, curr_util);
+
+    // gradient descent
+    double prev_llik;
     do {
-    
-	for(auto a_id: agentIDs) {
-	    for(auto s_id: agentID_to_sampleIDs[a_id]) {
-		size_t leaf_id = sampleID_to_leafID[s_id];
-		agent_Z[a_id] += exp(cur_util[leaf_id]);
-	    }
-	}
 
-	for (auto a_id: agentIDs) {
-	    for(auto s_id: agentID_to_sampleIDs[a_id]) {
+        prev_llik       = curr_llik;
+        compute_full_gradient(leafID_to_partial, agent_Z, curr_util);
 
-		size_t leaf_id = sampleID_to_leafID[s_id];
+        // armijo line search
+        curr_llik = backtracking(leafID_to_partial, agent_Z, curr_util, leafIDs, prev_llik);
 
-		double response = data->get(s_id, dependent_varID);
-		leafID_to_partial[leaf_id] += response - exp(cur_util[leaf_id])/agent_Z[a_id];
-	    }
-	}
-	
-	while( TODO:armijo ){
-	    stepsize = stepsize * beta;
-	}
 
-	
-	
-    
-    } while ( TODO:fill convergence criterion ) ;
-    
+    } while ( curr_llik - prev_llik > 0.001 );
+    util = curr_util;
+
+    double sum = 0;
+    for(auto l_id : leafIDs ) {
+        sum += util[l_id];
+    }
+    std::cout << "sum=" << sum << std::endl;
+}
+
+double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
+                                      std::vector<double>& curr_util, const std::set<size_t>& leafIDs, double prev_llik) {
+
+    std::vector<double> temp_util = curr_util;
+    double stepsize = 1;
+    double alpha    = 0.3;
+    double beta     = 0.8;
+    double grad_norm = 0;
+
+    for( auto l_id : leafIDs ) {
+        temp_util[l_id] += stepsize*leafID_to_partial.at(l_id); 
+        grad_norm       += leafID_to_partial.at(l_id)*leafID_to_partial.at(l_id);
+    }
+
+    compute_partition_func(agent_Z, temp_util);
+    double curr_llik = compute_log_likelihood(agent_Z, temp_util);
+
+    //std::cout << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
+     //         << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+
+    while(curr_llik - prev_llik < alpha*grad_norm*stepsize ){
+        temp_util  = curr_util;
+        stepsize   = stepsize * beta;
+        for( auto l_id : leafIDs ) {
+            temp_util[l_id] += stepsize*leafID_to_partial.at(l_id); 
+        }
+        compute_partition_func(agent_Z, temp_util);
+        curr_llik = compute_log_likelihood(agent_Z, temp_util);
+
+        // std::cout << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
+        //     << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+    }
+    curr_util = temp_util;
+    return curr_llik;
+}
+
+void TreeDiscreteChoice::compute_partition_func(std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
+    for(auto a_id: agentIDs) {
+        agent_Z[a_id] = 0;
+        for(auto s_id: agentID_to_sampleIDs[a_id]) {
+            size_t leaf_id = sampleID_to_leafID[s_id];
+            agent_Z[a_id] += exp(curr_util[leaf_id]);
+        }
+    }
+    return;
+}
+
+double TreeDiscreteChoice::compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
+    double llik = 0;
+    for(auto a_id: agentIDs) {
+        for(auto s_id: agentID_to_sampleIDs[a_id]) {
+            double response  = data->get(s_id, dependent_varID);
+            size_t l_id = sampleID_to_leafID[s_id];
+            double Z = agent_Z.at(a_id);
+            llik  += response*(curr_util[l_id] - log(Z));
+        }
+    }
+    return llik;
+}
+
+
+void TreeDiscreteChoice::compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
+    // compute gradient
+    for (auto a_id: agentIDs) {
+        for(auto s_id: agentID_to_sampleIDs[a_id]) {
+            size_t leaf_id              = sampleID_to_leafID[s_id];
+            double response             = data->get(s_id, dependent_varID);
+            double util = curr_util.at(leaf_id);
+            double Z    = agent_Z.at(a_id);
+            leafID_to_partial[leaf_id] += response - exp(util)/Z;
+        }
+    }
+    return;
 }

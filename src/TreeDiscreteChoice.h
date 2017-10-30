@@ -106,6 +106,12 @@ private:
   // parent nodeID -> left [0] or right [1] leaf values
   std::vector<std::vector<double>> child_util;
 
+  void compute_partition_func(std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util);
+  double compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util);
+  void compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util);
+  double backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
+                                      std::vector<double>& curr_util, const std::set<size_t>& leafIDs, double prev_llik);
+
   size_t num_splits;
 
   DISALLOW_COPY_AND_ASSIGN(TreeDiscreteChoice);
