@@ -30,6 +30,7 @@
 #include <iostream>
 #include <iterator>
 #include <vector>
+#include <iomanip>
 
 #include <ctime>
 
@@ -38,13 +39,12 @@
 #include "Data.h"
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
-    counter(0), sums(0) {
+    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(false)  {
 }
 
 TreeDiscreteChoice::TreeDiscreteChoice(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
     std::vector<double>& split_values, std::vector<bool>* is_ordered_variable) :
-    Tree(child_nodeIDs, split_varIDs, split_values, is_ordered_variable), counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0) {
-      num_splits = 0;
+    Tree(child_nodeIDs, split_varIDs, split_values, is_ordered_variable), counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(false) {
 }
 
 TreeDiscreteChoice::~TreeDiscreteChoice() {
@@ -65,6 +65,7 @@ void TreeDiscreteChoice::initInternal() {
     sums = new double[max_num_splits];
   }
 
+  num_splits = 0;
 }
 
 void TreeDiscreteChoice::post_bootstrap_init() {
@@ -127,10 +128,12 @@ bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& p
 
   // Check node size, stop if maximum reached
   if (sampleIDs[nodeID].size() <= min_node_size) {
-    //std::cout << "reached min node size" << std::endl;
+    if(debug)
+      std::cout << "STOP: reached min node size" << std::endl;
     split_values[nodeID] = util[nodeID];
     return true;
   }
+  
   
   if(node_depth[nodeID] == max_tree_height) {
     split_values[nodeID] = util[nodeID];
@@ -225,7 +228,8 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 
   // Stop if no good split found
   if (best_increase <= 0) {
-    //std::cout << "no good splits" << std::endl;
+    if(debug) 
+      std::cout << "STOP: no increase in log-likelihood. nodeSize=" << sampleIDs[nodeID].size() << std::endl;
     return true;
   }
 
@@ -247,6 +251,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
   double best_VR = 0;
 
   size_t c_star = 0, c_l = 0, c_r = 0; // number of positive choices in current leaf, and potential left/right leaf
+  size_t num_samples = 0;
 
   size_t agentID_varID = data->getVariableID("agentID");
 
@@ -278,6 +283,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     n_star[agentID]              += 1;
     n_r[agentID]                 += 1;// assume all samples start in right leaf
     idx_agent_n[index][agentID]  += 1;  
+    num_samples                  += 1;
 
     node_agentIDs.insert(agentID);
 
@@ -290,6 +296,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     ++counter[index];
   }
 
+  bool is_pure_node = (c_star == num_samples) || (c_star == 0);
+
   
   // compute partition funcs for each agent
   for(auto a_id: node_agentIDs) {
@@ -300,7 +308,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
   }
 
   size_t n_left = 0;
-  double sum_left = 0;
+  double sum_left = 0, sum_right = 0;
 
   // compute current likelihood
   double curr_llik = 0;
@@ -323,11 +331,6 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
 
   for (size_t i = 0; i < num_unique - 1; ++i) {
 
-    //std::cout << "progress: " << i << "/" << num_unique << std::endl;
-    double curr_VL = util[nodeID];
-    double curr_VR = V_star - curr_VL;
-    //std::cout << "start_VL= " << curr_VL << std::endl;
-    //std::cout << "start_VR= " << curr_VR << std::endl;
 
     // Stop if nothing here
     if (counter[i] == 0) {
@@ -347,11 +350,64 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     }
 
     // Stop if right child empty
-    n_left += counter[i];
-    //sum_left += sums[i];
-    size_t n_right = num_samples_node - n_left;
+    n_left         += counter[i];
+    sum_left       += sums[i];
+    sum_right       = c_star - sum_left;
+    size_t n_right  = num_samples_node - n_left;
     if (n_right == 0) {
       break;
+    }
+
+    double curr_VL = 0.5*util[nodeID];
+    double curr_VR = V_star - curr_VL;
+
+    // compute current likelihood
+    bool agent_pure_l = true, agent_pure_r = true;
+    double llik = 0;
+    for(auto a_id: node_agentIDs) {
+
+      if(n_l[a_id] != dcrf_numItems) {
+        agent_pure_l = false;
+      }
+      if(n_r[a_id] != dcrf_numItems) {
+        agent_pure_r = false;
+      }
+
+      std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
+      double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
+      //TODO: only need the agent's sampleIDs with response = 1
+      for(auto s_id : a_sIDs) {
+        double response = data->get(s_id, dependent_varID);
+        if( response != 0 ) {
+          size_t l_id = sampleID_to_leafID[s_id];
+          if( l_id == nodeID ) {
+            const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
+            if(is_r) {
+              llik += curr_VR - log(Z_curr);
+            } else {
+              llik += curr_VL - log(Z_curr);
+            }
+          } else {
+            llik += util[l_id] - log(Z_curr);
+          }
+          break;
+        } 
+      }
+    }
+    //TODO: does this ever get hit
+    if(agent_pure_l || agent_pure_r) {
+      if(debug)  {
+        std::cout << "skipping split - agent purity" << std::endl;
+        for(auto a_id: node_agentIDs) {
+          std::cout << "\tagent_id=" << a_id << "\tnum_left=" << n_l[a_id] << "\tnum_right=" << n_r[a_id] << std::endl;
+        }
+      }
+      continue;
+    }
+    if( debug ) { 
+      std::cout << "considering split,nodeID=" << nodeID << "\tn_left=" << n_left << "\tsum_left=" << sum_left << "\tn_right=" << n_right << "\tsum_right=" << sum_right << std::endl;
+      std::cout << "newton + line search -----------------" << std::endl;
+      std::cout << "\tpre_split_llik=" << curr_llik << "\tinitial llik=" << llik << "\tinit_VL=" << curr_VL << "\tinit_VR=" << curr_VR << std::endl;
     }
 
 
@@ -359,7 +415,6 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     // Maximum Likelihood
     *****************************************************************/
     double deltaVL  = 0;
-    double llik      = curr_llik;
     double prev_llik;
     size_t num_newton_iter = 0;
     do { 
@@ -379,24 +434,30 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
         dVL      -=  mm / Z_curr;
         dVL2     -=  ( Z_curr*pp  - mm*mm ) / (Z_curr*Z_curr);
 
-        /*
-           std::cout << "agentID=" << a_id << "\tn_l=" << n_l[a_id] << "\tn_r=" << n_r[a_id] << "\tZ_curr=" << Z_curr 
-           << "\tdVL=" << dVL  << "\tdVL2=" << dVL2 
-           << "\tmm=" << mm << "\tpp=" << pp << std::endl;
-           */
+        if(debug) { 
+          std::cout << "\t\tagentID=" << a_id 
+            << "\tn_l=" << n_l[a_id] 
+            << "\tn_r=" << n_r[a_id] 
+            << "\tZ_curr=" << Z_curr 
+            << "\tdVL=" << dVL  
+            << "\tdVL2=" << dVL2 
+            << "\tmm=" << mm 
+            << "\tpp=" << pp 
+            << std::endl;
+        }
 
       }
 
       // newton step
       deltaVL = (1.0 / dVL2)*dVL;
-      curr_VL = curr_VL - deltaVL;
-      curr_VR = V_star - curr_VL;
+      double temp_VL = curr_VL - deltaVL;
+      double temp_VR = V_star - temp_VL;
 
       // compute current likelihood
       llik = 0;
       for(auto a_id: node_agentIDs) {
         std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
-        double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
+        double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(temp_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(temp_VR);
         //std::cout << "agentID=" << a_id << "\tZ_curr=" << Z_curr << std::endl;
         //TODO: only need the agent's sampleIDs with response = 1
         for(auto s_id : a_sIDs) {
@@ -406,9 +467,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
             if( l_id == nodeID ) {
               const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
               if(is_r) {
-                llik += curr_VR - log(Z_curr);
+                llik += temp_VR - log(Z_curr);
               } else {
-                llik += curr_VL - log(Z_curr);
+                llik += temp_VL - log(Z_curr);
               }
             } else {
               llik += util[l_id] - log(Z_curr);
@@ -417,19 +478,97 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
           } 
         }
       }
+      
+      /*********************************************************************
+       * line search
+      ************************************************************************/
+      double stepsize  = 1;
+      double alpha     = 0.3;
+      double beta      = 0.8;
+      double threshold = -stepsize*alpha*dVL*deltaVL;
 
-      /*
-      std::cout << "split_num=" << num_splits << "\titer_num=" << num_newton_iter << "\tc_l=" << c_l << "\tc_r=" << c_r 
-      << "\tdVL=" << dVL 
-      << "\t1/dVL2=" << 1.0/dVL2
-      << "\tdeltaVL=" << deltaVL
-      << "\tnew_llik=" << llik
-      << "\tprev_llik=" << prev_llik 
-      << "\tdelta_llik=" << llik - prev_llik
-      << "\tcurr_VL= " << curr_VL 
-      << "\tcurr_VR= " << curr_VR << std::endl;
-      */
-   } while( fabs(llik - prev_llik) > 0.001 );// && abs(deltaVL) > 0.001); 
+      if(debug) {
+        std::cout << "\tline search" << std::endl;
+        std::cout << "\t\tprev_llik=" << prev_llik 
+          << "\tllik=" << llik 
+          << "\tstepsize=" << stepsize
+          << "\tdiff=" << llik - prev_llik 
+          << "\tthreshold=" << threshold 
+          << "\tdVL=" << dVL 
+          << "\t1/dVL2=" << 1.0/dVL2
+          << "\tdeltaVL=" << deltaVL
+          << "\ttemp_VL=" << temp_VL
+          << "\tcurr_VL=" << curr_VL
+          << "\ttemp_VR=" << temp_VR
+          << "\tcurr_VR=" << curr_VR
+          << std::endl;
+      }
+
+      while(llik - prev_llik < threshold && fabs(deltaVL) > 1e-5){
+        stepsize   = stepsize * beta;
+        temp_VL = curr_VL - stepsize*deltaVL;
+        temp_VR = V_star - temp_VL;
+        // compute current likelihood
+        llik = 0;
+        for(auto a_id: node_agentIDs) {
+          std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
+          double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(temp_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(temp_VR);
+          //std::cout << "agentID=" << a_id << "\tZ_curr=" << Z_curr << std::endl;
+          //TODO: only need the agent's sampleIDs with response = 1
+          for(auto s_id : a_sIDs) {
+            double response = data->get(s_id, dependent_varID);
+            if( response != 0 ) {
+              size_t l_id = sampleID_to_leafID[s_id];
+              if( l_id == nodeID ) {
+                const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
+                if(is_r) {
+                  llik += temp_VR - log(Z_curr);
+                } else {
+                  llik += temp_VL - log(Z_curr);
+                }
+              } else {
+                llik += util[l_id] - log(Z_curr);
+              }
+              break;
+            } 
+          }
+        }
+        threshold = -stepsize*alpha*dVL*deltaVL;
+        if( debug ) {
+          std::cout << "\t\tprev_llik=" << prev_llik << "\tllik=" << llik << "\tstepsize=" << stepsize
+            << "\tdiff=" << llik - prev_llik << "\tthreshold=" << threshold 
+            << "\tdVL=" << dVL 
+            << "\t1/dVL2=" << 1.0/dVL2
+            << "\tdeltaVL=" << deltaVL
+            << "\ttemp_VL=" << temp_VL
+            << "\tcurr_VL=" << curr_VL
+            << "\ttemp_VR=" << temp_VR
+            << "\tcurr_VR=" << curr_VR
+            << std::endl;
+        }
+      }
+      curr_VL = temp_VL;
+      curr_VR = temp_VR;
+      
+      if( debug ) {
+        std::cout << "\tline search complete" << std::endl;
+        std::cout //<< std::fixed << std::setprecision(3) 
+          << "\tsplit_num=" << num_splits 
+          << "\titer_num=" << num_newton_iter 
+          << "\tc_l=" << c_l 
+          << "\tc_r=" << c_r 
+          << "\tdVL=" << dVL 
+          << "\t1/dVL2=" << 1.0/dVL2
+          << "\tdeltaVL=" << deltaVL
+          << "\tnew_llik=" << llik
+          << "\tprev_llik=" << prev_llik 
+          << "\tdelta_step=" << llik - prev_llik
+          << "\tpre-split_llik=" << curr_llik
+          << "\tdelta_llik=" << llik - curr_llik
+          << "\tcurr_VL= " << curr_VL 
+          << "\tcurr_VR= " << curr_VR << std::endl;
+      }
+   } while(( (llik - prev_llik) > 1e-4 || llik < curr_llik) && fabs(deltaVL) > 1e-5); //TODO: need llik < curr_llik ?
     /*****************************************************************/
     double increase = llik - curr_llik;
     // If better than before, use this
@@ -445,11 +584,18 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       best_value    = (data->getUniqueDataValue(varID, i) + data->getUniqueDataValue(varID, j)) / 2;
       best_varID    = varID;
       best_increase = increase;
+      if( debug ) 
+        std::cout << "best increase=" << best_increase << std::endl;
       child_util[0][nodeID] = curr_VL;
       child_util[1][nodeID] = curr_VR;
     } else {
       //std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
+  }
+
+  if( best_increase > 0 && is_pure_node)  {
+    if( debug ) 
+      std::cout << "split pure nodeID=" << nodeID << std::endl; 
   }
 
 
@@ -492,7 +638,7 @@ void TreeDiscreteChoice::grow_post_process(){
     }
 
     // compute current state
-    compute_partition_func(agent_Z, util);
+    compute_partition_func(agent_Z, curr_util);
     double curr_llik = compute_log_likelihood(agent_Z, curr_util);
 
     // gradient descent
@@ -508,12 +654,6 @@ void TreeDiscreteChoice::grow_post_process(){
 
     } while ( curr_llik - prev_llik > 0.001 );
     util = curr_util;
-
-    double sum = 0;
-    for(auto l_id : leafIDs ) {
-        sum += util[l_id];
-    }
-    std::cout << "sum=" << sum << std::endl;
 }
 
 double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
@@ -533,10 +673,12 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
     compute_partition_func(agent_Z, temp_util);
     double curr_llik = compute_log_likelihood(agent_Z, temp_util);
 
-    //std::cout << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
-     //         << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+    if( debug ) {
+      std::cout << "global adjustement," << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
+        << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+    }
 
-    while(curr_llik - prev_llik < alpha*grad_norm*stepsize ){
+    while(curr_llik - prev_llik < alpha*grad_norm*stepsize  && stepsize > 1e-8) {
         temp_util  = curr_util;
         stepsize   = stepsize * beta;
         for( auto l_id : leafIDs ) {
@@ -545,10 +687,17 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
         compute_partition_func(agent_Z, temp_util);
         curr_llik = compute_log_likelihood(agent_Z, temp_util);
 
-        // std::cout << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
-        //     << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+        if( debug ) { 
+          std::cout << "global adjustement," << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm 
+            << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm << std::endl;
+        }
     }
-    curr_util = temp_util;
+    //TODO: why do we need this?
+    if(curr_llik - prev_llik < alpha*grad_norm*stepsize) {
+      curr_util = temp_util;
+    } else {
+      curr_llik = prev_llik;
+    }
     return curr_llik;
 }
 
@@ -565,12 +714,15 @@ void TreeDiscreteChoice::compute_partition_func(std::unordered_map<size_t, doubl
 
 double TreeDiscreteChoice::compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
     double llik = 0;
+    size_t debug_num = 0;
     for(auto a_id: agentIDs) {
         for(auto s_id: agentID_to_sampleIDs[a_id]) {
+          debug_num +=1;
             double response  = data->get(s_id, dependent_varID);
             size_t l_id = sampleID_to_leafID[s_id];
             double Z = agent_Z.at(a_id);
             llik  += response*(curr_util[l_id] - log(Z));
+            //std::cout << "response=" << response << "\tutil=" << curr_util[l_id] << "\tZ=" << Z << "\tllik=" << llik << std::endl;
         }
     }
     return llik;
@@ -583,8 +735,8 @@ void TreeDiscreteChoice::compute_full_gradient(std::unordered_map<size_t,double>
         for(auto s_id: agentID_to_sampleIDs[a_id]) {
             size_t leaf_id              = sampleID_to_leafID[s_id];
             double response             = data->get(s_id, dependent_varID);
-            double util = curr_util.at(leaf_id);
-            double Z    = agent_Z.at(a_id);
+            double util                 = curr_util.at(leaf_id);
+            double Z                    = agent_Z.at(a_id);
             leafID_to_partial[leaf_id] += response - exp(util)/Z;
         }
     }

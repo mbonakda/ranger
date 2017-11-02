@@ -113,6 +113,7 @@ private:
                                       std::vector<double>& curr_util, const std::set<size_t>& leafIDs, double prev_llik);
 
   size_t num_splits;
+  bool debug;
 
   DISALLOW_COPY_AND_ASSIGN(TreeDiscreteChoice);
 };

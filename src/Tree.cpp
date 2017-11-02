@@ -205,6 +205,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
     ++i;
   }
 
+  grow_post_process();
   
   auto t2 = std::chrono::high_resolution_clock::now();
   time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
