@@ -840,10 +840,12 @@ void TreeDiscreteChoice::grow_post_process(){
         // armijo line search
         curr_llik = backtracking(leafID_to_partial, agent_Z, curr_util, leafIDs, prev_llik);
 
-        std::cout << "global adjustment,gradient descent,curr_llik=" << curr_llik << "\tprev_llik=" << prev_llik << "\tdiff=" << curr_llik - prev_llik << std::endl;
+        if(debug)
+            std::cout << "global adjustment,gradient descent,curr_llik=" << curr_llik << "\tprev_llik=" << prev_llik << "\tdiff=" << curr_llik - prev_llik << std::endl;
 
     } while ( curr_llik - prev_llik > 1e-8 );
-    std::cout << "done with global adjustment,curr_llik=" << curr_llik << "\tprev_llik=" << prev_llik << "\tdiff=" << curr_llik - prev_llik << std::endl;
+    if(debug) 
+        std::cout << "done with global adjustment,curr_llik=" << curr_llik << "\tprev_llik=" << prev_llik << "\tdiff=" << curr_llik - prev_llik << std::endl;
     util = curr_util;
 }
 
