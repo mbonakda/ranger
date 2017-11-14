@@ -120,24 +120,26 @@ void TreeDiscreteChoice::appendToFileInternal(std::ofstream& file) {
 // Empty on purpose
 }
 
-bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
+void TreeDiscreteChoice::splitNode_post_process() {
+    // get leaf IDs
+    std::set<size_t>  leafIDs;
+    double util_sum = 0;
+    for(auto a_id: agentIDs) {
+        for(auto s_id: agentID_to_sampleIDs[a_id]) {
+            size_t leaf_id = sampleID_to_leafID[s_id];
+            auto itr = leafIDs.find(leaf_id);
+            if(itr == leafIDs.end())  {
+                util_sum += util[leaf_id];
+                leafIDs.insert(leaf_id);
+            }
+        }
+    }
+    for( auto& l_id : leafIDs ) {
+        util[l_id] -= util_sum / leafIDs.size();
+    }
+}
 
-  // get leaf IDs
-  std::set<size_t>  leafIDs;
-  double util_sum = 0;
-  for(auto a_id: agentIDs) {
-      for(auto s_id: agentID_to_sampleIDs[a_id]) {
-          size_t leaf_id = sampleID_to_leafID[s_id];
-          auto itr = leafIDs.find(leaf_id);
-          if(itr == leafIDs.end())  {
-              util_sum += util[leaf_id];
-              leafIDs.insert(leaf_id);
-          }
-      }
-  }
-  for( auto& l_id : leafIDs ) {
-      util[l_id] -= util_sum / leafIDs.size();
-  }
+bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
 
   //TODO: do better here
   size_t agentID_varID = data->getVariableID("agentID");

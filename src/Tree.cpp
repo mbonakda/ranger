@@ -713,7 +713,7 @@ bool Tree::splitNode(size_t nodeID) {
   }
 
   underconstr_samples[nodeID].clear(); // remove sampleIDs for all non-leaves to conserve memory
-
+  splitNode_post_process();
 // No terminal node
   return false;
 }

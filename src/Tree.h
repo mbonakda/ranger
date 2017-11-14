@@ -156,6 +156,7 @@ protected:
   virtual void reshape() { }
   int time_growTrees, time_goldiInt, time_underInt;
   virtual void grow_post_process() { }
+  virtual void splitNode_post_process() { }
   
   size_t dependent_varID;
   uint mtry;
