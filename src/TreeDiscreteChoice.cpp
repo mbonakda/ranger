@@ -38,7 +38,7 @@
 #include "TreeDiscreteChoice.h"
 #include "Data.h"
 
-const size_t DEBUG = 0;
+const size_t DEBUG = 3;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
     counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG)  {
@@ -828,6 +828,12 @@ void TreeDiscreteChoice::grow_post_process(){
         }
     }
 
+    double util_sum = 0;
+    for(auto & l_id : leafIDs) {
+      util_sum += curr_util[l_id];
+    }
+    std::cout << "pre-global-adjustment,util_sum=" << util_sum << std::endl;
+
     // compute current state
     compute_partition_func(agent_Z, curr_util);
     double curr_llik = compute_log_likelihood(agent_Z, curr_util);
@@ -849,6 +855,10 @@ void TreeDiscreteChoice::grow_post_process(){
     if(debug) 
         std::cout << "done with global adjustment,curr_llik=" << curr_llik << "\tprev_llik=" << prev_llik << "\tdiff=" << curr_llik - prev_llik << std::endl;
     util = curr_util;
+    
+    for(auto & l_id : leafIDs) {
+      split_values[l_id] = util[l_id];
+    }
 }
 
 double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
@@ -860,9 +870,13 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
     double beta              = 0.8;
     double grad_norm_squared = 0;
 
+    double max_grad_component = 0;
     for( auto l_id : leafIDs ) {
         temp_util[l_id]         += stepsize*leafID_to_partial.at(l_id); 
         grad_norm_squared       += leafID_to_partial.at(l_id)*leafID_to_partial.at(l_id);
+        if( fabs(leafID_to_partial.at(l_id)) > max_grad_component) {
+          max_grad_component = leafID_to_partial.at(l_id);
+        }
     }
     double grad_norm = sqrt(grad_norm_squared);
 
@@ -871,6 +885,7 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
 
     if( debug ) {
       std::cout << "global adjustement," << "prev_llik=" << prev_llik << "\tcurr_llik=" << curr_llik << "\tstepsize=" << stepsize << "\tgrad_norm=" << grad_norm
+        << "\tmax_grad_component=" << max_grad_component
         << "\tdiff=" << curr_llik - prev_llik << "\tthreshold=" << stepsize*alpha*grad_norm_squared << std::endl;
     }
 
