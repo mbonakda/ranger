@@ -398,13 +398,11 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     bool agent_pure_l = true, agent_pure_r = true;
     double llik = 0;
     for(auto a_id: node_agentIDs) {
-
       std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
       double Z_curr = agent_Z[a_id] - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
       //TODO: only need the agent's sampleIDs with response = 1
       for(auto s_id : a_sIDs) {
         double response = data->get(s_id, dependent_varID);
-        if( response != 0 ) {
           size_t l_id = sampleID_to_leafID[s_id];
           if( l_id == nodeID ) {
             const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
@@ -412,24 +410,29 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
                 if(n_r[a_id] != dcrf_numItems) {
                     agent_pure_r = false;
                 }
-              llik += curr_VR - log(Z_curr);
+              llik += response*(curr_VR - log(Z_curr));
             } else {
                 if(n_l[a_id] != dcrf_numItems) {
                     agent_pure_l = false;
                 }
-              llik += curr_VL - log(Z_curr);
+              llik += response*(curr_VL - log(Z_curr));
             }
           } else {
-            llik += util[l_id] - log(Z_curr);
+            llik += response*(util[l_id] - log(Z_curr));
           }
-          break;
-        } 
       }
     }
     
     bool agent_pure = agent_pure_l || agent_pure_r;
-    if(agent_pure) 
-        continue;
+    if(agent_pure)  {
+      if(debug >= 2) {
+        std::cout << "skipping agent pure split" << std::endl;
+        for(auto a_id: node_agentIDs) {
+          std::cout << "agent_id=" << a_id << "\tn_l=" << n_l[a_id] << "\tn_r=" << n_r[a_id] << std::endl;
+        }
+      }
+      continue;
+    }
 
     if( debug >= 2 ) { 
       std::cout << "considering split,nodeID=" << nodeID << "\tcovariate=" << data->getVariableNames()[varID]  << "\tcovariate value=" << data->getUniqueDataValue(varID, i) 
@@ -741,7 +744,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
         }
       }
 
-      if(threshold == 0 && dVL != 0) {
+      if(threshold == 0 && step_norm !=0) {
           std::cout << "line search failed" << std::endl;
           /*
         std::cout << "threshold zero erro" << std::endl;
@@ -795,9 +798,6 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
         curr_VR = temp_VR;
       } else {
           llik = prev_llik;
-          if( threshold == 0 ) {
-              std::cout << "zero threshold" << std::endl;
-          }
           /*
           std::cout << "rejected this iteration of newton,threshold=" << threshold << ",step_norm=" << step_norm << ",dVL=" << dVL << ",dVR=" << dVR << ",agent_pure=" << agent_pure << std::endl;
           std::cout << "\t\tnum_iters=" << num_lineSearch_iters 
