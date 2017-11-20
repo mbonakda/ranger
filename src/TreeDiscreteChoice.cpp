@@ -795,6 +795,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
         curr_VR = temp_VR;
       } else {
           llik = prev_llik;
+          if( threshold == 0 ) {
+              std::cout << "zero threshold" << std::endl;
+          }
           /*
           std::cout << "rejected this iteration of newton,threshold=" << threshold << ",step_norm=" << step_norm << ",dVL=" << dVL << ",dVR=" << dVR << ",agent_pure=" << agent_pure << std::endl;
           std::cout << "\t\tnum_iters=" << num_lineSearch_iters 
