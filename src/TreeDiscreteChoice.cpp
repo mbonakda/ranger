@@ -105,17 +105,6 @@ void TreeDiscreteChoice::post_bootstrap_init() {
 
 }
 
-double TreeDiscreteChoice::estimate(size_t nodeID) {
-
-// Mean of responses of samples in node
-  double sum_responses_in_node = 0;
-  size_t num_samples_in_node = sampleIDs[nodeID].size();
-  for (size_t i = 0; i < sampleIDs[nodeID].size(); ++i) {
-    sum_responses_in_node += data->get(sampleIDs[nodeID][i], dependent_varID);
-  }
-  return (sum_responses_in_node / (double) num_samples_in_node);
-}
-
 void TreeDiscreteChoice::appendToFileInternal(std::ofstream& file) {
 // Empty on purpose
 }
@@ -216,18 +205,7 @@ void TreeDiscreteChoice::createEmptyNodeInternal() {
 }
 
 double TreeDiscreteChoice::computePredictionAccuracyInternal() {
-
-  size_t num_predictions = prediction_terminal_nodeIDs.size();
-  double sum_of_squares = 0;
-  for (size_t i = 0; i < num_predictions; ++i) {
-    size_t terminal_nodeID = prediction_terminal_nodeIDs[i];
-    double predicted_value = split_values[terminal_nodeID];
-    double real_value = data->get(oob_sampleIDs[i], dependent_varID);
-    if (predicted_value != real_value) {
-      sum_of_squares += (predicted_value - real_value) * (predicted_value - real_value);
-    }
-  }
-  return (1.0 - sum_of_squares / (double) num_predictions);
+  return 0;
 }
 
 bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
@@ -891,25 +869,6 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       //std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
   }
-}
-
-
-void TreeDiscreteChoice::addImpurityImportance(size_t nodeID, size_t varID, double decrease) {
-
-  double sum_node = 0;
-  for (auto& sampleID : sampleIDs[nodeID]) {
-    sum_node += data->get(sampleID, dependent_varID);
-  }
-  double best_decrease = decrease - sum_node * sum_node / (double) sampleIDs[nodeID].size();
-
-// No variable importance for no split variables
-  size_t tempvarID = varID;
-  for (auto& skip : *no_split_variables) {
-    if (varID >= skip) {
-      --tempvarID;
-    }
-  }
-  (*variable_importance)[tempvarID] += best_decrease;
 }
 
 // adjust all leaves 
