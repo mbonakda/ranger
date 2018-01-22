@@ -105,7 +105,20 @@ private:
   std::vector<std::vector<double>> child_util;
 
   void compute_partition_func(std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util);
-  double compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util);
+
+  double compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
+                                const std::vector<double>& curr_util,
+                                const std::unordered_set<size_t>& agentIDs);
+
+  double compute_temp_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
+                                     const std::vector<double>& curr_util,
+                                     const std::unordered_set<size_t>& agent_ids,
+                                     double V_L, double V_R, double V_star,
+                                     const std::unordered_set<size_t>& right_sIDs,
+                                     std::unordered_map<size_t, size_t>& n_l,
+                                     std::unordered_map<size_t, size_t>& n_r,
+                                     size_t nodeID) ;
+
   void compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, 
       const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util, const std::set<size_t>& leafIDs);
   double backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
