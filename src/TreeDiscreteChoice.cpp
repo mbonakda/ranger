@@ -39,6 +39,18 @@ TreeDiscreteChoice::TreeDiscreteChoice() :
     counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG)  {
 }
 
+TreeDiscreteChoice::TreeDiscreteChoice(const std::unordered_map<size_t, std::vector<size_t>>& agentID_to_sampleIDs):
+    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG)
+{
+    this->agentID_to_sampleIDs = agentID_to_sampleIDs;
+
+    // assuming every agent considers the same number of items
+    auto itr       = agentID_to_sampleIDs.begin();
+    auto vec       = itr->second;
+    dcrf_numItems  = vec.size();
+    dcrf_numAgents = agentID_to_sampleIDs.size();
+}
+
 TreeDiscreteChoice::TreeDiscreteChoice(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
     std::vector<double>& split_values, std::vector<bool>* is_ordered_variable) :
     Tree(child_nodeIDs, split_varIDs, split_values, is_ordered_variable), counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG) {
@@ -49,6 +61,7 @@ TreeDiscreteChoice::~TreeDiscreteChoice() {
 }
 
 void TreeDiscreteChoice::initInternal() {
+	std::cout.precision(17);
   // Init counters if not in memory efficient mode
   if (!memory_saving_splitting) {
     size_t max_num_splits = data->getMaxNumUniqueValues();
@@ -66,38 +79,99 @@ void TreeDiscreteChoice::initInternal() {
 }
 
 void TreeDiscreteChoice::post_bootstrap_init() {
-  size_t agentID_varID = data->getVariableID("agentID");
-  Tree::post_bootstrap_init();
-  for (auto& sampleID : sampleIDs[0]) {
-    size_t a_id = data->get(sampleID, agentID_varID);
-    agentIDs.insert(a_id);
-    auto itr = agentID_to_sampleIDs.find(a_id);
-    if( itr == agentID_to_sampleIDs.end() ) {
-      agentID_to_sampleIDs.emplace(a_id, std::vector<size_t>());
-    }
-    agentID_to_sampleIDs[a_id].push_back(sampleID);
-    sampleID_to_agentIDs[sampleID] = a_id;
-
-    auto atol_itr = agentID_to_leafIDs.find(a_id);
-    if(atol_itr == agentID_to_leafIDs.end()){
-      agentID_to_leafIDs.emplace(a_id, std::vector<size_t>());
-    }
-    agentID_to_leafIDs[a_id].push_back(0);
-  }
-
-
-  // assuming every agent considers the same number of items
-  auto itr = agentID_to_sampleIDs.begin();
-  auto vec = itr->second;
-  dcrf_numItems = vec.size();
-  dcrf_numAgents = agentIDs.size();
-
 
   // utility at root node does not affect log-lik. initialize to zero.
   util.push_back(0);
-  // TODO: this likelihood calculation is incorrect when bootstrapping
-  llik.push_back((dcrf_numAgents*util[0])-dcrf_numAgents*log((double)dcrf_numItems*exp(util[0])));
+  
+  size_t numAgents = agentIDs.size();
+  //TODO fix this with bootrapping
+  llik.push_back((numAgents*util[0])-numAgents*log((double)dcrf_numItems*exp(util[0])));
 
+}
+
+void TreeDiscreteChoice::bootstrap() {
+    // Use fraction (default 63.21%) of the samples
+    size_t num_agents_inbag = (size_t) dcrf_numAgents * sample_fraction;
+    size_t num_samples_inbag = num_agents_inbag * dcrf_numItems;
+
+    // Reserve space, reserve a little more to be save)
+    sampleIDs[0].reserve(num_samples_inbag);
+    agentIDs.reserve(num_agents_inbag);
+    oob_sampleIDs.reserve(num_samples * (exp(-sample_fraction) + 0.1));
+
+    // assumes agentIDs are from 1 ... numAgents
+    std::uniform_int_distribution<size_t> unif_dist(1, dcrf_numAgents);
+
+    // Start with all samples OOB
+    inbag_counts.resize(num_samples, 0);
+
+    // Draw num_samples samples with replacement (num_samples_inbag out of n) as inbag and mark as not OOB
+    for (size_t s = 0; s < num_agents_inbag; ++s) {
+        
+        size_t a_id = unif_dist(random_number_generator); // agentID
+        unique_agentIDs.insert(a_id);
+        agentIDs.push_back(a_id);
+        agentID_to_N[a_id] += 1;
+       
+        auto itr = agentID_to_sampleIDs.find(a_id);
+        if( itr != agentID_to_sampleIDs.end() ) {
+            for( auto s_id : itr->second ) {
+                sampleIDs[0].push_back(s_id);
+                ++inbag_counts[s_id];
+            }
+        } else {
+            std::cout << "discrete choice bootstrap error: agentID " << a_id << " not found" << std::endl;
+        }
+
+
+    }
+
+    node_depth.push_back(0);
+    tree_height = 0;
+
+
+    // Save OOB samples
+    for (size_t s = 0; s < inbag_counts.size(); ++s) {
+        if (inbag_counts[s] == 0) {
+            oob_sampleIDs.push_back(s);
+        }
+    }
+    num_samples_oob = oob_sampleIDs.size();
+
+    if (!keep_inbag) {
+        inbag_counts.clear();
+    }
+}
+
+void TreeDiscreteChoice::bootstrapWithoutReplacement() {
+
+    if( sample_fraction != 1 ) {
+        std::cout << "not implemented with sample_fraction != 1" << std::endl;
+    }
+    // Use fraction (default 63.21%) of the samples
+    size_t num_agents_inbag  = (size_t) dcrf_numAgents * sample_fraction;
+    size_t num_samples_inbag = num_agents_inbag * dcrf_numItems;
+
+    // TODO: for sample_fraction !=1, this would need to take agentIDs into account
+    shuffleAndSplit(sampleIDs[0], oob_sampleIDs, num_samples, num_samples_inbag, random_number_generator);
+
+    num_samples_oob = oob_sampleIDs.size();
+    for( size_t a_id = 1; a_id <= num_agents_inbag; ++a_id ) {
+        unique_agentIDs.insert(a_id);
+        agentIDs.push_back(a_id);
+        agentID_to_N[a_id] += 1;
+    }
+
+    if (keep_inbag) {
+        // All observation are 0 or 1 times inbag
+        inbag_counts.resize(num_samples, 1);
+        for (size_t i = 0; i < oob_sampleIDs.size(); i++) {
+            inbag_counts[oob_sampleIDs[i]] = 0;
+        }
+    }
+
+    node_depth.push_back(0);
+    tree_height = 0;
 }
 
 void TreeDiscreteChoice::appendToFileInternal(std::ofstream& file) {
@@ -105,29 +179,24 @@ void TreeDiscreteChoice::appendToFileInternal(std::ofstream& file) {
 }
 
 void TreeDiscreteChoice::splitNode_post_process() {
-    // get leaf IDs
-    std::set<size_t>  leafIDs;
     double util_sum = 0;
-    for(auto a_id: agentIDs) {
-        for(auto s_id: agentID_to_sampleIDs[a_id]) {
-            size_t leaf_id = sampleID_to_leafID[s_id];
-            auto itr = leafIDs.find(leaf_id);
-            if(itr == leafIDs.end())  {
-                util_sum += util[leaf_id];
-                leafIDs.insert(leaf_id);
-            }
-        }
+    for( auto& l_id : leafIDs ) {
+        util_sum += util[l_id];
     }
+
     for( auto& l_id : leafIDs ) {
         util[l_id] -= util_sum / leafIDs.size();
     }
+
 }
 
 bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
 
   //TODO: do better here
   size_t agentID_varID = data->getVariableID("agentID");
-  possible_split_varIDs.erase(std::remove(possible_split_varIDs.begin(), possible_split_varIDs.end(), agentID_varID), possible_split_varIDs.end());
+  possible_split_varIDs.erase(std::remove(possible_split_varIDs.begin(), 
+                                          possible_split_varIDs.end(), agentID_varID), 
+          possible_split_varIDs.end());
 
   // Check node size, stop if maximum reached
   if (sampleIDs[nodeID].size() <= min_node_size) {
@@ -181,17 +250,11 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   size_t best_varID = 0;
   double best_value = 0;
 
-  // Compute sum of responses in node
-  double sum_node = 0;
-  for (auto& sampleID : sampleIDs[nodeID]) {
-    sum_node += data->get(sampleID, dependent_varID);
-  }
-
   // For all possible split variables
   for (auto& varID : possible_split_varIDs) {
     // Find best split value, if ordered consider all values as split values, else all 2-partitions
     if ((*is_ordered_variable)[varID]) {
-      findBestSplitValue(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_increase);
+      findBestSplitValue(nodeID, varID, num_samples_node, best_value, best_varID, best_increase);
     } else {
       std::cout << "ERROR - can only handle ordered covariates for now" << std::endl;
       exit(0);
@@ -210,7 +273,7 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   return false;
 }
 
-void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
+void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
     double& best_value, size_t& best_varID, double& best_increase) {
 
   // Set counters to 0
@@ -231,7 +294,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
   // value index --> agentID --> numSamples
   std::unordered_map<size_t, std::unordered_map<size_t, size_t> > idx_agent_n; 
   // all agentIDs in this node
-  std::unordered_set<size_t> node_agentIDs;
+  std::vector<size_t> node_agentIDs;
+  // unique agentIDs in this node
+  std::unordered_set<size_t> unique_node_agentIDs;
   // agentID --> partition func
   std::unordered_map<size_t, double> agent_Z;
   // idx --> sampleIDs
@@ -252,11 +317,15 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     c_star                       += response;
 
     n_star[agentID]              += 1; // TODO: up a level
+
+    // TODO: fix n_r and idx_agent_n with bootstrap
     n_r[agentID]                 += 1; // assume all samples start in right leaf TODO: up a level
     idx_agent_n[index][agentID]  += 1;  
+
     num_samples                  += 1; // TODO: up a level
 
-    node_agentIDs.insert(agentID); // TODO: up a level
+    //node_agentIDs.push_back(agentID); // TODO: up a level
+    unique_node_agentIDs.insert(agentID); // TODO: up a level
 
     auto itr = idx_to_sID.find(index); // TODO: up a few levels (shouldn't change for the entire fitting process)
     if( itr == idx_to_sID.end() ) {
@@ -268,13 +337,31 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     ++counter[index];
   }
 
+  // post-process to account for bootstrapping
+  for( auto & ix_iter : idx_agent_n ) {
+      for(auto a_to_n :ix_iter.second ) {
+          idx_agent_n[ix_iter.first][a_to_n.first] /= agentID_to_N[a_to_n.first];
+      }
+  }
+  for( auto a_id : unique_node_agentIDs ) {
+      n_r[a_id] /= agentID_to_N[a_id];
+      n_star[a_id] /= agentID_to_N[a_id];
+  }
+  
+  //TODO cleanup - inefficient
+  for( auto a_id : unique_node_agentIDs ) {
+    for(size_t i = 0; i < agentID_to_N[a_id]; ++i) {
+       node_agentIDs.push_back(a_id); 
+    }
+  }
+
   // TODO: up a level
   // compute partition funcs for each agent
-  for(auto a_id: node_agentIDs) {
-    for(auto s_id: agentID_to_sampleIDs[a_id]) {
-      size_t leaf_id = sampleID_to_leafID[s_id];
-      agent_Z[a_id] += exp(util[leaf_id]);
-    }
+  for(auto a_id: unique_node_agentIDs) {
+      for(auto s_id:agentID_to_sampleIDs[a_id]) {
+          size_t leaf_id = sampleID_to_leafID[s_id];
+          agent_Z[a_id] += exp(util[leaf_id]);
+      }
   }
 
   size_t n_left = 0;
@@ -289,8 +376,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
   // iterate through all possible split values
   for (size_t i = 0; i < num_unique - 1; ++i) {
 	  
-    // note: warm starting to previous V_L/V_R by moving this outside of the loop 
-    //       causes numerical issues
+    // TODO: warm starting to previous V_L/V_R by moving this outside of the loop 
+    //       causes numerical issues. why?
 	double curr_VL = util[nodeID];
 	double curr_VR = util[nodeID];
 
@@ -326,8 +413,10 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
 
     // Stop if agent pure split
     // (assumes all agents have same number of items to choose from)
+    // TODO: once we are not agent pure for agent X, we never will be. 
+    //         ---> reduce set of agents checked ?
     bool agent_pure = true;
-    for(auto a_id: node_agentIDs) {
+    for(auto a_id: unique_node_agentIDs) {
         if( !agent_pure ) { break; } // short circuit
         for(auto sample_id : agentID_to_sampleIDs[a_id]) {
             size_t leaf_id = sampleID_to_leafID[sample_id];
@@ -353,6 +442,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
     }
     
     if(agent_pure)  {
+      std::cout << "agent pure found" << std::endl;
       continue;
     }
     /***********************************************************************************/
@@ -383,12 +473,13 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       prev_llik        = llik;
 
       num_newton_iter += 1;
-      if(debug)
+      if(debug) {
           std::cout << "newton iteration = " << num_newton_iter 
                     << "\tprev_llik=" << prev_llik 
                     << "\tcurr_VL=" << curr_VL
                     << "\tcurr_VR=" << curr_VR 
                     << std::endl;
+      }
 
       dVL = 0;
       dVR = 0;
@@ -405,6 +496,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
       }
       for(auto a_id: node_agentIDs) {
 
+        //TODO: replacement error
         double Z_curr = agent_Z[a_id] 
                             - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) 
                             - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
@@ -415,6 +507,21 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
           dVL      -=  mm / Z_curr;
           dVR       =  -dVL;
           dVL2     -=  ( Z_curr*pp  - mm*mm ) / (Z_curr*Z_curr);
+          if(debug > 1) { 
+              std::cout << std::fixed 
+                  << "\t\tagentID=" << a_id 
+                  << "\tn_l=" << n_l[a_id] 
+                  << "\tn_r=" << n_r[a_id] 
+                  << "\texp(curr_VL)=" << exp(curr_VL)
+                  << "\texp(curr_VR)=" << exp(curr_VR)
+                  << "\tZ_curr=" << Z_curr 
+                  << "\tdVL=" << dVL  
+                  << "\tdVR=" << dVR
+                  << "\tc_l=" << c_l
+                  << "\tc_r=" << c_r
+                  << "\tprecision=" << dbl::max_digits10
+                  << std::endl;
+          }
         } else {
           dVL      -= n_l[a_id]*exp(curr_VL) / Z_curr;
           dVR      -= n_r[a_id]*exp(curr_VR) / Z_curr;
@@ -523,7 +630,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
               double thresh_factor = dVL*delta_VL + dVR*delta_VR;
               threshold            = stepsize*alpha*thresh_factor;
           }
-          if(debug > 1) {
+          if(debug) {
               std::cout << "\t\tprev_llik=" << prev_llik 
                   << "\tllik=" << llik 
                   << "\tstepsize=" << stepsize
@@ -543,6 +650,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, double 
                   << "\ttemp_VR=" << temp_VR
                   << "\tcurr_VR=" << curr_VR
                   << "\tnodeID=" << nodeID
+                  << "\tdebug=" << debug
                   << std::endl;
           }
       } // end line search
@@ -593,17 +701,7 @@ void TreeDiscreteChoice::grow_post_process(){
 
     std::unordered_map<size_t, double> agent_Z;
     std::unordered_map<size_t, double> leafID_to_partial;
-    std::set<size_t>                   leafIDs;
     std::vector<double>                curr_util = util;
-
-
-    // get leaf IDs
-    for(auto a_id: agentIDs) {
-        for(auto s_id: agentID_to_sampleIDs[a_id]) {
-            size_t leaf_id = sampleID_to_leafID[s_id];
-            leafIDs.insert(leaf_id);
-        }
-    }
 
     // compute current state
     compute_partition_func(agent_Z, curr_util);
@@ -614,12 +712,13 @@ void TreeDiscreteChoice::grow_post_process(){
     do {
 
         prev_llik       = curr_llik;
-        compute_full_gradient(leafID_to_partial, agent_Z, curr_util, leafIDs);
+        compute_full_gradient(leafID_to_partial, agent_Z, curr_util);
 
         // armijo line search
-        curr_llik = backtracking(leafID_to_partial, agent_Z, curr_util, leafIDs, prev_llik);
+        curr_llik = backtracking(leafID_to_partial, agent_Z, curr_util, prev_llik);
 
     } while ( curr_llik - prev_llik > 1e-5 );
+
 
     util = curr_util;
     
@@ -629,7 +728,7 @@ void TreeDiscreteChoice::grow_post_process(){
 }
 
 double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
-                                      std::vector<double>& curr_util, const std::set<size_t>& leafIDs, double prev_llik) {
+                                      std::vector<double>& curr_util, double prev_llik) {
 
     std::vector<double> temp_util = curr_util;
     double stepsize          = 1;
@@ -655,7 +754,8 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
         num_iter += 1;
         temp_util  = curr_util;
         stepsize   = stepsize * beta;
-        for( auto l_id : leafIDs ) {
+
+		for( auto l_id : leafIDs ) {
             temp_util[l_id] += stepsize*leafID_to_partial.at(l_id); 
         }
         compute_partition_func(agent_Z, temp_util);
@@ -674,8 +774,9 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
     return curr_llik;
 }
 
-void TreeDiscreteChoice::compute_partition_func(std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
-    for(auto a_id: agentIDs) {
+void TreeDiscreteChoice::compute_partition_func(std::unordered_map<size_t, double>& agent_Z, 
+                                                const std::vector<double>& curr_util) {
+    for(auto a_id: unique_agentIDs) {
         agent_Z[a_id] = 0;
         for(auto s_id: agentID_to_sampleIDs[a_id]) {
             size_t leaf_id = sampleID_to_leafID[s_id];
@@ -687,17 +788,18 @@ void TreeDiscreteChoice::compute_partition_func(std::unordered_map<size_t, doubl
 
 double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
                                                        const std::vector<double>& curr_util,
-                                                       const std::unordered_set<size_t>& agent_ids,
+                                                       const std::vector<size_t>& agent_ids,
                                                        double V_L, double V_R, double V_star,
                                                        const std::unordered_set<size_t>& right_sIDs,
                                                        std::unordered_map<size_t, size_t>& n_l,
                                                        std::unordered_map<size_t, size_t>& n_r,
                                                        size_t nodeID) 
 {
-    double llik = 0;
+    double llik = 0.0;
     for(auto agent_id: agent_ids) {
 
         // update partition function
+        // TODO: with replacement error
         double Z_curr = agent_Z.at(agent_id) 
                          - n_l[agent_id]*exp(V_star) + n_l[agent_id]*exp(V_L) 
                          - n_r[agent_id]*exp(V_star) + n_r[agent_id]*exp(V_R);
@@ -722,7 +824,7 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
 
 double TreeDiscreteChoice::compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
                                                   const std::vector<double>& curr_util,
-                                                  const std::unordered_set<size_t>& agent_ids) 
+                                                  const std::vector<size_t>& agent_ids) 
 {
     double llik = 0;
     for(auto a_id: agent_ids) {
@@ -737,7 +839,7 @@ double TreeDiscreteChoice::compute_log_likelihood(const std::unordered_map<size_
 }
 
 
-void TreeDiscreteChoice::compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util, const std::set<size_t>& leafIDs) {
+void TreeDiscreteChoice::compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util) {
 
     for(auto & l_id : leafIDs) {
       leafID_to_partial[l_id] = 0;

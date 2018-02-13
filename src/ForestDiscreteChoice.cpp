@@ -64,27 +64,44 @@ void ForestDiscreteChoice::loadForest(size_t dependent_varID, size_t num_trees,
 
 void ForestDiscreteChoice::initInternal(std::string status_variable_name) {
 
-  // If mtry not set, use number of independent variables / 3.
-  if (mtry == 0) {
-    unsigned long temp = sqrt((double) (num_variables - 1));
-    mtry = std::max((unsigned long) 1, temp);
-  }
+    // If mtry not set, use number of independent variables / 3.
+    if (mtry == 0) {
+        unsigned long temp = sqrt((double) (num_variables - 1));
+        mtry = std::max((unsigned long) 1, temp);
+    }
 
-  // Set minimal node size
-  if (min_node_size == 0) {
-    min_node_size = DEFAULT_MIN_NODE_SIZE_REGRESSION;
-  }
+    // Set minimal node size
+    if (min_node_size == 0) {
+        min_node_size = DEFAULT_MIN_NODE_SIZE_REGRESSION;
+    }
 
-  // Sort data if memory saving mode
-  if (!memory_saving_splitting) {
-    data->sort();
-  }
+    // Sort data if memory saving mode
+    if (!memory_saving_splitting) {
+        data->sort();
+    }
+
+    size_t agentID_varID = data->getVariableID("agentID");
+    for( size_t row = 0; row < num_samples; ++row ) {
+        size_t a_id = data->get(row , agentID_varID);
+        agentIDs.insert(a_id);
+        auto itr = agentID_to_sampleIDs.find(a_id);
+        if( itr == agentID_to_sampleIDs.end() ) {
+            agentID_to_sampleIDs.emplace(a_id, std::vector<size_t>());
+        }
+        agentID_to_sampleIDs[a_id].push_back(row);
+    }
+
+    // assuming every agent considers the same number of items
+    auto itr       = agentID_to_sampleIDs.begin();
+    auto vec       = itr->second;
+    dcrf_numItems  = vec.size();
+    dcrf_numAgents = agentIDs.size();
 }
 
 void ForestDiscreteChoice::growInternal() {
   trees.reserve(num_trees);
   for (size_t i = 0; i < num_trees; ++i) {
-    trees.push_back(new TreeDiscreteChoice());
+    trees.push_back(new TreeDiscreteChoice(agentID_to_sampleIDs));
   }
 }
 

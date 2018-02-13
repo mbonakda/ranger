@@ -56,6 +56,11 @@ private:
   void saveToFileInternal(std::ofstream& outfile);
   void loadFromFileInternal(std::ifstream& infile);
 
+  std::unordered_set<size_t> agentIDs;
+  std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
+  double dcrf_numItems;
+  double dcrf_numAgents;
+
   DISALLOW_COPY_AND_ASSIGN(ForestDiscreteChoice);
 };
 

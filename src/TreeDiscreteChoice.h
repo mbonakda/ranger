@@ -35,6 +35,7 @@
 class TreeDiscreteChoice: public Tree {
 public:
   TreeDiscreteChoice();
+  TreeDiscreteChoice(const std::unordered_map<size_t, std::vector<size_t>>& agentID_to_sampleIDs);
 
   // Create from loaded forest
   TreeDiscreteChoice(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
@@ -63,7 +64,7 @@ private:
 
   // Called by splitNodeInternal(). Sets split_varIDs and split_values.
   bool findBestSplit(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
-  void findBestSplitValue(size_t nodeID, size_t varID, double sum_node, size_t num_samples_node,
+  void findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
       double& best_value, size_t& best_varID, double& best_decrease);
 
 
@@ -88,19 +89,20 @@ private:
   double dcrf_numItems;
   double dcrf_numAgents;
 
-  std::unordered_set<size_t> agentIDs;
-  std::unordered_set<size_t> itemIDs;
+  void bootstrap();
+  void bootstrapWithoutReplacement();
+
+  std::unordered_set<size_t> unique_agentIDs;
+  std::vector<size_t> agentIDs; // repeats allowed
 
   //   agentID -> [sampleIDs] 
   std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
-  //   sampleID -> agentID 
-  std::unordered_map<size_t, size_t> sampleID_to_agentIDs; 
+  //   agentID -> # of times it appears in bootstrap sample
+  std::unordered_map<size_t, size_t> agentID_to_N;
   // log-lik contribution of each node
   std::vector<double> llik;
   // estimated utility at each node
   std::vector<double> util;
-  // agentID -> all leafIDs that currently have a sample from that agent
-  std::unordered_map<size_t, std::vector<size_t>> agentID_to_leafIDs; 
   // parent nodeID -> left [0] or right [1] leaf values
   std::vector<std::vector<double>> child_util;
 
@@ -108,11 +110,11 @@ private:
 
   double compute_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
                                 const std::vector<double>& curr_util,
-                                const std::unordered_set<size_t>& agentIDs);
+                                const std::vector<size_t>& agentIDs);
 
   double compute_temp_log_likelihood(const std::unordered_map<size_t, double>& agent_Z, 
                                      const std::vector<double>& curr_util,
-                                     const std::unordered_set<size_t>& agent_ids,
+                                     const std::vector<size_t>& agent_ids,
                                      double V_L, double V_R, double V_star,
                                      const std::unordered_set<size_t>& right_sIDs,
                                      std::unordered_map<size_t, size_t>& n_l,
@@ -120,9 +122,12 @@ private:
                                      size_t nodeID) ;
 
   void compute_full_gradient(std::unordered_map<size_t,double>& leafID_to_partial, 
-      const std::unordered_map<size_t, double>& agent_Z, const std::vector<double>& curr_util, const std::set<size_t>& leafIDs);
-  double backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,std::unordered_map<size_t, double>& agent_Z, 
-                                      std::vector<double>& curr_util, const std::set<size_t>& leafIDs, double prev_llik);
+                             const std::unordered_map<size_t, double>& agent_Z, 
+                             const std::vector<double>& curr_util);
+
+  double backtracking(const std::unordered_map<size_t,double>& leafID_to_partial,
+                      std::unordered_map<size_t, double>& agent_Z, 
+                      std::vector<double>& curr_util, double prev_llik);
 
   size_t num_splits;
   size_t debug;

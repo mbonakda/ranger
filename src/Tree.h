@@ -145,8 +145,8 @@ protected:
 
   virtual double computePredictionAccuracyInternal() = 0;
 
-  void bootstrap();
-  void bootstrapWithoutReplacement();
+  virtual void bootstrap();
+  virtual void bootstrapWithoutReplacement();
 
   void bootstrapWeighted();
   void bootstrapWithoutReplacementWeighted();
@@ -253,6 +253,7 @@ protected:
   std::vector<size_t> agentIDs;
   // sampleID -> leafID
   std::unordered_map<size_t, size_t> sampleID_to_leafID; 
+  std::unordered_set<size_t>  leafIDs;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Tree);

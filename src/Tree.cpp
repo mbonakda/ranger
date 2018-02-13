@@ -173,7 +173,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
 
   this->variable_importance = variable_importance;
 
-// Bootstrap, dependent if weighted or not and with or without replacement
+  // Bootstrap, dependent if weighted or not and with or without replacement
   if (case_weights->empty()) {
     if (sample_with_replacement) {
       bootstrap();
@@ -188,7 +188,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
   }
   
-  //std::cout << "calling post_bootstrap_init()" << std::endl;
   post_bootstrap_init();
 
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -620,9 +619,11 @@ bool Tree::splitNode(size_t nodeID) {
 
   size_t split_varID = split_varIDs[nodeID];
   double split_value = split_values[nodeID];
+  leafIDs.erase(nodeID);
 
 // Create child nodes
   size_t left_child_nodeID = sampleIDs.size();
+  leafIDs.insert(left_child_nodeID);
   child_nodeIDs[0][nodeID] = left_child_nodeID;
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
@@ -630,6 +631,7 @@ bool Tree::splitNode(size_t nodeID) {
   node_depth[left_child_nodeID] = node_depth[nodeID]+1;
 
   size_t right_child_nodeID = sampleIDs.size();
+  leafIDs.insert(right_child_nodeID);
   child_nodeIDs[1][nodeID] = right_child_nodeID;
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
