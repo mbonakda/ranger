@@ -442,7 +442,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     }
     
     if(agent_pure)  {
-      std::cout << "agent pure found" << std::endl;
+      //std::cout << "agent pure found" << std::endl;
       continue;
     }
     /***********************************************************************************/
