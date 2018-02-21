@@ -131,6 +131,7 @@ private:
 
   size_t num_splits;
   size_t debug;
+  size_t timing;
 
   DISALLOW_COPY_AND_ASSIGN(TreeDiscreteChoice);
 };

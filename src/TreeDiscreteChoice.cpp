@@ -33,14 +33,15 @@
 #include <limits>
 typedef std::numeric_limits< double > dbl;
 
-const size_t DEBUG = 0;
+const size_t DEBUG  = 0;
+const size_t TIMING = 1;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
-    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG)  {
+    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG), timing(TIMING)  {
 }
 
 TreeDiscreteChoice::TreeDiscreteChoice(const std::unordered_map<size_t, std::vector<size_t>>& agentID_to_sampleIDs):
-    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG)
+    counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG), timing(TIMING) 
 {
     this->agentID_to_sampleIDs = agentID_to_sampleIDs;
 
@@ -53,7 +54,7 @@ TreeDiscreteChoice::TreeDiscreteChoice(const std::unordered_map<size_t, std::vec
 
 TreeDiscreteChoice::TreeDiscreteChoice(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
     std::vector<double>& split_values, std::vector<bool>* is_ordered_variable) :
-    Tree(child_nodeIDs, split_varIDs, split_values, is_ordered_variable), counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG) {
+    Tree(child_nodeIDs, split_varIDs, split_values, is_ordered_variable), counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG), timing(TIMING)  {
 }
 
 TreeDiscreteChoice::~TreeDiscreteChoice() {
@@ -254,7 +255,16 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   for (auto& varID : possible_split_varIDs) {
     // Find best split value, if ordered consider all values as split values, else all 2-partitions
     if ((*is_ordered_variable)[varID]) {
+      auto t1 = std::chrono::high_resolution_clock::now();
       findBestSplitValue(nodeID, varID, num_samples_node, best_value, best_varID, best_increase);
+      auto t2 = std::chrono::high_resolution_clock::now();
+      if(timing) {
+          std::cout << "timing,findBestSplitValue," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+              << ",depth=" << node_depth[nodeID] 
+              << ",varID=" << varID
+              << ",numSamples=" << num_samples_node
+              << ",nodeID=" << nodeID << std::endl;
+      }
     } else {
       std::cout << "ERROR - can only handle ordered covariates for now" << std::endl;
       exit(0);
@@ -308,6 +318,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
   // setup initial state for optimization before iterating through split values
   // TODO: some things can be moved up a level. do not need to
   //       compute these for every split variable (they don't change)!
+  auto t1 = std::chrono::high_resolution_clock::now();
   for (auto& sampleID : sampleIDs[nodeID]) {
     size_t index                  = data->getIndex(sampleID, varID);
     size_t agentID                = data->get(sampleID, agentID_varID);
@@ -338,6 +349,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
   }
 
   // post-process to account for bootstrapping
+  // TODO: inefficient
   for( auto & ix_iter : idx_agent_n ) {
       for(auto a_to_n :ix_iter.second ) {
           idx_agent_n[ix_iter.first][a_to_n.first] /= agentID_to_N[a_to_n.first];
@@ -373,6 +385,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
   double V_star    = util[nodeID];
 
+  auto t2 = std::chrono::high_resolution_clock::now();
+  if(timing)  {
+      std::cout << "timing,overall setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+          << std::endl;
+  }
+
   // iterate through all possible split values
   for (size_t i = 0; i < num_unique - 1; ++i) {
 	  
@@ -388,6 +406,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     if (counter[i] == 0) {
       continue;
     }
+    
+    t1 = std::chrono::high_resolution_clock::now();
     
     c_l += sums[i];
     c_r  = c_star - c_l;
@@ -441,6 +461,11 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
         }
     }
     
+    t2 = std::chrono::high_resolution_clock::now();
+    if(timing) {
+        std::cout << "timing,per-iter setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+            << std::endl;
+    }
     if(agent_pure)  {
       //std::cout << "agent pure found" << std::endl;
       continue;
@@ -469,7 +494,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 			      << "\tcovariate value=" << data->getUniqueDataValue(varID, i) 
 				  << std::endl;
 	}
+    auto full_newton1  = std::chrono::high_resolution_clock::now();
     do { 
+      auto iter_newton1  = std::chrono::high_resolution_clock::now();
       prev_llik        = llik;
 
       num_newton_iter += 1;
@@ -592,6 +619,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       /*********************************************************************
        * line search
       ************************************************************************/
+      auto iter_lineSearch1  = std::chrono::high_resolution_clock::now();
       double stepsize  = 1;
       double alpha     = 0.3;
       double beta      = 0.8;
@@ -654,6 +682,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
                   << std::endl;
           }
       } // end line search
+      auto iter_lineSearch2  = std::chrono::high_resolution_clock::now();
+      if(timing) {
+          std::cout << "timing,iter lineSearch," << std::chrono::duration_cast<std::chrono::microseconds>(iter_lineSearch2 - iter_lineSearch1).count()
+              << ",numIters=" << num_lineSearch_iters
+              << std::endl;
+      }
 
       if(threshold == 0 && step_norm !=0) {
           std::cout << "line search failed" << std::endl;
@@ -666,7 +700,21 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       } else {
           llik = prev_llik;
       }
+      
+      auto iter_newton2  = std::chrono::high_resolution_clock::now();
+      if(timing) {
+          std::cout << "timing,iter newton," << std::chrono::duration_cast<std::chrono::microseconds>(iter_newton2 - iter_newton1).count()
+              << ",numIters=" << num_newton_iter
+              << std::endl;
+      }
    } while( (llik - prev_llik) > 1e-4  && step_norm > 1e-6); 
+    auto full_newton2 = std::chrono::high_resolution_clock::now();
+    if(timing) {
+        std::cout << "timing,full newton," << std::chrono::duration_cast<std::chrono::microseconds>(full_newton2 - full_newton1).count()
+            << ",numIters=" << num_newton_iter
+            << std::endl;
+    }
+
     /*****************************************************************/
 	if(debug) {
 		std::cout << "after newton,curr_VL=" << curr_VL 

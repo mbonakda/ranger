@@ -475,10 +475,17 @@ void Forest::grow() {
     }
     threads.push_back(std::thread(&Forest::growTreesInThread, this, i, &(variable_importance_threads[i])));
   }
+  auto t1 = std::chrono::high_resolution_clock::now();
   showProgress("Growing trees..");
   for (auto &thread : threads) {
     thread.join();
   }
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto grow_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+  std::cout << "timing,treeGrowing," << grow_time
+      << ",numTrees=" << num_trees
+      << ",numThreads=" << num_threads
+      << std::endl;
 
 #ifdef R_BUILD
   if (aborted_threads > 0) {
@@ -675,7 +682,10 @@ void Forest::computePermutationImportance() {
 void Forest::growTreesInThread(uint thread_idx, std::vector<double>* variable_importance) {
   if (thread_ranges.size() > thread_idx + 1) {
     for (size_t i = thread_ranges[thread_idx]; i < thread_ranges[thread_idx + 1]; ++i) {
+      auto t1 = std::chrono::high_resolution_clock::now();
       trees[i]->grow(variable_importance);
+      auto t2 = std::chrono::high_resolution_clock::now();
+      auto grow_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
       // Check for user interrupt
 #ifdef R_BUILD
@@ -689,6 +699,8 @@ void Forest::growTreesInThread(uint thread_idx, std::vector<double>* variable_im
 
       // Increase progress by 1 tree
       std::unique_lock<std::mutex> lock(mutex);
+      std::cout << "timing,oneTree," << grow_time
+          << std::endl;
       ++progress;
       condition_variable.notify_one();
     }

@@ -190,7 +190,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   
   post_bootstrap_init();
 
-    auto t1 = std::chrono::high_resolution_clock::now();
+  auto t1 = std::chrono::high_resolution_clock::now();
 // While not all nodes terminal, split next node
   size_t num_open_nodes = 1;
   size_t i = 0;
@@ -600,6 +600,7 @@ bool Tree::splitNode(size_t nodeID) {
   if(node_depth[nodeID] == max_tree_height) {
     stop = true;
   }
+
 
   if (stop) {
     for (auto& s : underconstr_samples[nodeID]) {
