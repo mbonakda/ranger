@@ -33,7 +33,7 @@
 #include <limits>
 typedef std::numeric_limits< double > dbl;
 
-const size_t DEBUG  = 0;
+const size_t DEBUG  = 1;
 const size_t TIMING = 1;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
@@ -286,6 +286,12 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
     double& best_value, size_t& best_varID, double& best_increase) {
 
+  if(debug) {
+      std::cout << "finding best split value,nodeID=" << nodeID
+			    << "\tcovariate=" << data->getVariableNames()[varID]  
+                << ",varID=" << varID
+                << std::endl;
+  }
   // Set counters to 0
   size_t num_unique = data->getNumUniqueDataValues(varID);
   std::fill(counter, counter + num_unique, 0);
@@ -467,7 +473,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
             << std::endl;
     }
     if(agent_pure)  {
-      //std::cout << "agent pure found" << std::endl;
+      if(debug) {
+          std::cout << "skipping split value -- agent pure found" << std::endl;
+      }
       continue;
     }
     /***********************************************************************************/
