@@ -33,7 +33,7 @@
 #include <limits>
 typedef std::numeric_limits< double > dbl;
 
-const size_t DEBUG  = 1;
+const size_t DEBUG  = 0;
 const size_t TIMING = 0;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
@@ -291,6 +291,10 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   split_values[nodeID] = best_value;
 
   return false;
+}
+
+double clip(double n, double lower, double upper) {
+    return std::max(lower, std::min(n, upper));
 }
 
 void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
@@ -648,8 +652,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
       /*****************************************************************/
 
-      double temp_VL = curr_VL + delta_VL;
-      double temp_VR = curr_VR + delta_VR;
+      double temp_VL = clip(curr_VL + delta_VL, -20.0, 20.0);
+      double temp_VR = clip(curr_VR + delta_VR, -20.0, 20.0);
       auto compute_newton2  = std::chrono::high_resolution_clock::now();
       if(timing) {
           std::cout << "timing,compute newton," << std::chrono::duration_cast<std::chrono::microseconds>(compute_newton2 - compute_newton1).count()
@@ -972,10 +976,18 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
     double llik = 0.0;
     for(auto agent_id: agent_ids) {
 
+
         // update partition function
         double Z_curr = agent_Z.at(agent_id) 
                          - n_l[agent_id]*exp(V_star) + n_l[agent_id]*exp(V_L) 
                          - n_r[agent_id]*exp(V_star) + n_r[agent_id]*exp(V_R);
+
+        if( debug && nodeID ==2 ) {
+          std::cout << "temp log-lik,"
+            << ",agentID," << agent_id
+            << ",prev Z," << agent_Z.at(agent_id)
+            << ",new Z," << Z_curr;
+        }
 
         auto sample_id = agentID_to_choiceID[agent_id];
         //double response  = data->get(sample_id, dependent_varID);
@@ -984,11 +996,24 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
             const bool is_r = right_sIDs.find(sample_id) != right_sIDs.end();
             if(is_r) {
                 llik += V_R - log(Z_curr);
+                if( debug && nodeID ==2 ) {
+                  std::cout << ",V_R," << V_R;
+                }
             } else {
                 llik += V_L - log(Z_curr);
+                if( debug && nodeID ==2 ) {
+                  std::cout << ",V_L," << V_L;
+                }
             }
         } else {
             llik += curr_util[leaf_id] - log(Z_curr);
+                if( debug && nodeID ==2 ) {
+                  std::cout << ",V," << curr_util[leaf_id];
+                }
+        }
+        if( debug && nodeID ==2 ) {
+          std::cout << ",log(newZ)," << log(Z_curr)
+                    << ",llik," << llik << std::endl;
         }
     }
     return llik;
