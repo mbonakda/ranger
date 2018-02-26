@@ -33,7 +33,7 @@
 #include <limits>
 typedef std::numeric_limits< double > dbl;
 
-const size_t DEBUG  = 0;
+const size_t DEBUG  = 1;
 const size_t TIMING = 0;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
@@ -675,6 +675,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           << "\tdiff=" << llik - prev_llik 
           << "\tdelta_VL=" << delta_VL 
           << "\tdelta_VR=" << delta_VR 
+          << "\tstep_norm=" << step_norm
           << "\tdVL=" << dVL 
           << "\tdVR=" << dVR 
           << "\tdVL2=" << dVL2
