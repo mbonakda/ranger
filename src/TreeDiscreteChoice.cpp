@@ -735,7 +735,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           if(num_newton_iter > 50) 
               std::cout << "ERROR: more than 50 newton iterations" << std::endl;
           else
-              std::cout << "infinite log-lik" << std:endl;
+              std::cout << "infinite log-lik" << std::endl;
 		  exit(-1);
 	  }
 
