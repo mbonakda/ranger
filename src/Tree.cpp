@@ -209,7 +209,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
   auto t2 = std::chrono::high_resolution_clock::now();
   time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
 
-  //std::cout << "number of nodes," + std::to_string(sampleIDs.size()) << std::endl;
+  //std::cout << "number of nodes," << sampleIDs.size() << std::endl;
 
   if(!sc_variable_IDs.empty()) {
      reshape();

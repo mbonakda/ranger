@@ -33,8 +33,8 @@
 #include <limits>
 typedef std::numeric_limits< double > dbl;
 
-const size_t DEBUG  = 1;
-const size_t TIMING = 1;
+const size_t DEBUG  = 0;
+const size_t TIMING = 0;
 
 TreeDiscreteChoice::TreeDiscreteChoice() :
     counter(0), sums(0), dcrf_numItems(0), dcrf_numAgents(0), num_splits(0), debug(DEBUG), timing(TIMING)  {
@@ -50,6 +50,7 @@ TreeDiscreteChoice::TreeDiscreteChoice(const std::unordered_map<size_t, std::vec
     auto vec       = itr->second;
     dcrf_numItems  = vec.size();
     dcrf_numAgents = agentID_to_sampleIDs.size();
+
 }
 
 TreeDiscreteChoice::TreeDiscreteChoice(std::vector<std::vector<size_t>>& child_nodeIDs, std::vector<size_t>& split_varIDs,
@@ -62,21 +63,30 @@ TreeDiscreteChoice::~TreeDiscreteChoice() {
 }
 
 void TreeDiscreteChoice::initInternal() {
-	std::cout.precision(17);
-  // Init counters if not in memory efficient mode
-  if (!memory_saving_splitting) {
-    size_t max_num_splits = data->getMaxNumUniqueValues();
+    std::cout.precision(17);
+    // Init counters if not in memory efficient mode
+    if (!memory_saving_splitting) {
+        size_t max_num_splits = data->getMaxNumUniqueValues();
 
-    // Use number of random splits for extratrees
-    if (splitrule == EXTRATREES && num_random_splits > max_num_splits) {
-      max_num_splits = num_random_splits;
+        // Use number of random splits for extratrees
+        if (splitrule == EXTRATREES && num_random_splits > max_num_splits) {
+            max_num_splits = num_random_splits;
+        }
+
+        counter = new size_t[max_num_splits];
+        sums = new double[max_num_splits];
     }
 
-    counter = new size_t[max_num_splits];
-    sums = new double[max_num_splits];
-  }
-
-  num_splits = 0;
+    for( auto & itr : agentID_to_sampleIDs ) {
+        auto a_id = itr.first;
+        for( auto s_id : itr.second ) {
+            double response  = data->get(s_id, dependent_varID);
+            if(response  == 1) {
+                agentID_to_choiceID[a_id] = s_id;
+            }
+        }
+    }
+    num_splits = 0;
 }
 
 void TreeDiscreteChoice::post_bootstrap_init() {
@@ -354,6 +364,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     ++counter[index];
   }
 
+  auto t2 = std::chrono::high_resolution_clock::now();
+  if(timing)  {
+      std::cout << "timing,intermediate setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+          << std::endl;
+  }
+
   // post-process to account for bootstrapping
   // TODO: inefficient
   for( auto & ix_iter : idx_agent_n ) {
@@ -366,14 +382,13 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       n_star[a_id] /= agentID_to_N[a_id];
   }
   
-  //TODO cleanup - inefficient
+  //TODO inefficient
   for( auto a_id : unique_node_agentIDs ) {
     for(size_t i = 0; i < agentID_to_N[a_id]; ++i) {
        node_agentIDs.push_back(a_id); 
     }
   }
 
-  // TODO: up a level
   // compute partition funcs for each agent
   for(auto a_id: unique_node_agentIDs) {
       for(auto s_id:agentID_to_sampleIDs[a_id]) {
@@ -387,23 +402,25 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
   
   // compute current likelihood
-  double curr_llik = compute_log_likelihood(agent_Z, util, node_agentIDs); // TODO: up a level 
+  double curr_llik = compute_log_likelihood(agent_Z, util, node_agentIDs);
 
   double V_star    = util[nodeID];
 
-  auto t2 = std::chrono::high_resolution_clock::now();
+  t2 = std::chrono::high_resolution_clock::now();
   if(timing)  {
       std::cout << "timing,overall setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
           << std::endl;
   }
 
+
   // iterate through all possible split values
   for (size_t i = 0; i < num_unique - 1; ++i) {
-	  
-    // TODO: warm starting to previous V_L/V_R by moving this outside of the loop 
-    //       causes numerical issues. why?
-	double curr_VL = util[nodeID];
-	double curr_VR = util[nodeID];
+
+	  // TODO: warm starting to previous V_L/V_R by moving this outside of the loop 
+	  //       causes numerical issues. why?
+	  double curr_VL = util[nodeID];
+	  double curr_VR = util[nodeID];
+
 
     /***********************************************************************************
     // update constants for optimization and check for short circuits
@@ -494,6 +511,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
     double step_norm       = 0;
     size_t num_newton_iter = 0;
+    size_t num_lineSearch_iters = 0;
     double dVL = 0, dVR=0; // partial derivatives
     double prev_llik;
 	if(debug)  {
@@ -523,6 +541,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       /*****************************************************************
       // compute direction of step
        *****************************************************************/
+      auto compute_newton1  = std::chrono::high_resolution_clock::now();
       if(nodeID == 0) {
         dVL += static_cast<double>(c_l) - static_cast<double>(c_r);
       } else {
@@ -531,7 +550,6 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       }
       for(auto a_id: node_agentIDs) {
 
-        //TODO: replacement error
         double Z_curr = agent_Z[a_id] 
                             - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) 
                             - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
@@ -545,11 +563,14 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           if(debug > 1) { 
               std::cout << std::fixed 
                   << "\t\tagentID=" << a_id 
+                  << "\tmm=" << mm
+                  << "\tpp=" << pp
+                  << "\tZ_curr=" << Z_curr 
+                  << "\tdVL2=" << dVL2
                   << "\tn_l=" << n_l[a_id] 
                   << "\tn_r=" << n_r[a_id] 
                   << "\texp(curr_VL)=" << exp(curr_VL)
                   << "\texp(curr_VR)=" << exp(curr_VR)
-                  << "\tZ_curr=" << Z_curr 
                   << "\tdVL=" << dVL  
                   << "\tdVR=" << dVR
                   << "\tc_l=" << c_l
@@ -588,10 +609,40 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       double delta_VL = 0, delta_VR = 0;
       if(nodeID == 0) { // univariate newton
         delta_VL = -(1.0 / dVL2)*dVL;
-        delta_VR = -delta_VL;
+		if(delta_VL > 5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VL = 5;
+		} 
+		if(delta_VL < -5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VL = -5;
+		}
+		delta_VR = -delta_VL;
       } else { // newton otherwise
         delta_VL      = -dtmnt*((dVR2) *dVL - dVLVR*dVR);
+		if(delta_VL > 5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VL = 5;
+		} 
+		if(delta_VL < -5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VL = -5;
+		}
         delta_VR      = -dtmnt*(-dVLVR*dVL + (dVL2)*dVR);
+		if(delta_VR > 5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VR = 5;
+		} 
+		if(delta_VR < -5) {
+			if(debug)
+				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
+			//delta_VR = -5;
+		}
       }
 
       step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
@@ -599,10 +650,23 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
       double temp_VL = curr_VL + delta_VL;
       double temp_VR = curr_VR + delta_VR;
+      auto compute_newton2  = std::chrono::high_resolution_clock::now();
+      if(timing) {
+          std::cout << "timing,compute newton," << std::chrono::duration_cast<std::chrono::microseconds>(compute_newton2 - compute_newton1).count()
+              << ",numIters=" << num_newton_iter
+              << std::endl;
+      }
 
+      auto temp_ll1 = std::chrono::high_resolution_clock::now();
       llik = compute_temp_log_likelihood(agent_Z, util, node_agentIDs, 
                                          temp_VL, temp_VR, V_star,
                                          right_sIDs, n_l, n_r, nodeID);
+      auto temp_ll2 = std::chrono::high_resolution_clock::now();
+      if(timing) {
+          std::cout << "timing,log-like newton," << std::chrono::duration_cast<std::chrono::microseconds>(temp_ll2 - temp_ll1).count()
+              << ",numIters=" << num_newton_iter
+              << std::endl;
+      }
 
       if(debug) {
         std::cout << "newton step" << std::endl;
@@ -624,6 +688,57 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           << std::endl;
       }
 
+	  if(isinf(llik) || num_newton_iter > 50) {
+		  std::cout << "debug," 
+                    << "curr.leaf" << "," 
+                    << "y"         << "," 
+                    << "leaf.id"   << "," 
+                    << "v"         << "," 
+                    << "agent.id"  << "," 
+                    << "sample.id" 
+                    << std::endl;
+		  for(auto a_id: node_agentIDs) {
+			  std::vector<size_t> a_sIDs = agentID_to_sampleIDs[a_id];
+			  for(auto s_id : a_sIDs) {
+				  size_t l_id     = sampleID_to_leafID[s_id];
+				  double response = data->get(s_id, dependent_varID);
+				  if( l_id == nodeID ) {
+					  const bool is_r = right_sIDs.find(s_id) != right_sIDs.end();
+					  if(is_r) {
+						  std::cout << "debug," 
+                                    << "R" << "," 
+                                    << response << "," 
+                         			<< l_id << "," 
+									<< temp_VR << "," 
+									<< a_id << "," 
+									<< s_id << std::endl;
+					  } else {
+						  std::cout << "debug," 
+									<< "L" << "," 
+									<< response << "," 
+									<< l_id << "," 
+									<< temp_VL << "," 
+									<< a_id << "," 
+									<< s_id << std::endl;
+					  }
+				  } else {
+					  std::cout << "debug," 
+								<< "X" << "," 
+								<< response << "," 
+								<< l_id << "," 
+								<< util[l_id] << "," 
+								<< a_id << "," 
+								<< s_id << std::endl;
+				  }
+			  }
+		  }
+          if(num_newton_iter > 50) 
+              std::cout << "ERROR: more than 50 newton iterations" << std::endl;
+          else
+              std::cout << "infinite log-lik" << std:endl;
+		  exit(-1);
+	  }
+
       /*********************************************************************
        * line search
       ************************************************************************/
@@ -640,7 +755,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
         threshold            = stepsize*alpha*thresh_factor;
       }
 
-      size_t num_lineSearch_iters = 0;
+      num_lineSearch_iters = 0;
       while(llik - prev_llik < threshold && step_norm > 1e-6 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10){
           num_lineSearch_iters += 1;
 		  if(debug) {
@@ -699,6 +814,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
       if(threshold == 0 && step_norm !=0) {
           std::cout << "line search failed" << std::endl;
+          exit(-1);
       }
 
       // don't accept if we didn't cross threshold
@@ -719,7 +835,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     auto full_newton2 = std::chrono::high_resolution_clock::now();
     if(timing) {
         std::cout << "timing,full newton," << std::chrono::duration_cast<std::chrono::microseconds>(full_newton2 - full_newton1).count()
-            << ",numIters=" << num_newton_iter
+            << ",numNewtonIters," << num_newton_iter
+            << ",numLineSearchIters," << num_lineSearch_iters
             << std::endl;
     }
 
@@ -855,24 +972,22 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
     for(auto agent_id: agent_ids) {
 
         // update partition function
-        // TODO: with replacement error
         double Z_curr = agent_Z.at(agent_id) 
                          - n_l[agent_id]*exp(V_star) + n_l[agent_id]*exp(V_L) 
                          - n_r[agent_id]*exp(V_star) + n_r[agent_id]*exp(V_R);
 
-        for(auto sample_id: agentID_to_sampleIDs[agent_id]) {
-            double response  = data->get(sample_id, dependent_varID);
-            size_t leaf_id   = sampleID_to_leafID[sample_id];
-            if( leaf_id == nodeID ) {
-                const bool is_r = right_sIDs.find(sample_id) != right_sIDs.end();
-                if(is_r) {
-                    llik += response*(V_R - log(Z_curr));
-                } else {
-                    llik += response*(V_L - log(Z_curr));
-                }
+        auto sample_id = agentID_to_choiceID[agent_id];
+        //double response  = data->get(sample_id, dependent_varID);
+        size_t leaf_id   = sampleID_to_leafID[sample_id];
+        if( leaf_id == nodeID ) {
+            const bool is_r = right_sIDs.find(sample_id) != right_sIDs.end();
+            if(is_r) {
+                llik += V_R - log(Z_curr);
             } else {
-                llik += response*(curr_util[leaf_id] - log(Z_curr));
+                llik += V_L - log(Z_curr);
             }
+        } else {
+            llik += curr_util[leaf_id] - log(Z_curr);
         }
     }
     return llik;
@@ -884,12 +999,10 @@ double TreeDiscreteChoice::compute_log_likelihood(const std::unordered_map<size_
 {
     double llik = 0;
     for(auto a_id: agent_ids) {
-        for(auto s_id: agentID_to_sampleIDs[a_id]) {
-            double response  = data->get(s_id, dependent_varID);
-            double Z         = agent_Z.at(a_id);
-            size_t l_id      = sampleID_to_leafID[s_id];
-            llik             += response*(curr_util[l_id] - log(Z));
-        }
+        auto s_id = agentID_to_choiceID[a_id];
+        double Z         = agent_Z.at(a_id);
+        size_t l_id      = sampleID_to_leafID[s_id];
+        llik             += curr_util[l_id] - log(Z);
     }
     return llik;
 }

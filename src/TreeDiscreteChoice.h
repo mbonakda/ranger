@@ -97,6 +97,8 @@ private:
 
   //   agentID -> [sampleIDs] 
   std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
+  // agentID -> sampleID with Y=1
+  std::unordered_map<size_t, size_t> agentID_to_choiceID; 
   //   agentID -> # of times it appears in bootstrap sample
   std::unordered_map<size_t, size_t> agentID_to_N;
   // log-lik contribution of each node

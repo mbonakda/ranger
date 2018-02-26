@@ -482,10 +482,12 @@ void Forest::grow() {
   }
   auto t2 = std::chrono::high_resolution_clock::now();
   auto grow_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+  /*
   std::cout << "timing,treeGrowing," << grow_time
       << ",numTrees=" << num_trees
       << ",numThreads=" << num_threads
       << std::endl;
+      */
 
 #ifdef R_BUILD
   if (aborted_threads > 0) {
@@ -699,8 +701,7 @@ void Forest::growTreesInThread(uint thread_idx, std::vector<double>* variable_im
 
       // Increase progress by 1 tree
       std::unique_lock<std::mutex> lock(mutex);
-      std::cout << "timing,oneTree," << grow_time
-          << std::endl;
+      //std::cout << "timing,oneTree," << grow_time << std::endl;
       ++progress;
       condition_variable.notify_one();
     }

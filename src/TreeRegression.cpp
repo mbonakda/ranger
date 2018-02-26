@@ -37,6 +37,8 @@
 #include "TreeRegression.h"
 #include "Data.h"
 
+const size_t TIMING = 0;
+
 TreeRegression::TreeRegression() :
     counter(0), sums(0) {
 }
@@ -169,7 +171,16 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         if (q < Q_THRESHOLD) {
           findBestSplitValueSmallQ(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_decrease);
         } else {
-          findBestSplitValueLargeQ(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_decrease);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            findBestSplitValueLargeQ(nodeID, varID, sum_node, num_samples_node, best_value, best_varID, best_decrease);
+            auto t2 = std::chrono::high_resolution_clock::now();
+          if(TIMING) {
+              std::cout << "TIMING,findBestSplitValue," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+                  << ",depth=" << node_depth[nodeID] 
+                  << ",varID=" << varID
+                  << ",numSamples=" << num_samples_node
+                  << ",nodeID=" << nodeID << std::endl;
+          }
         }
       }
     } else {
@@ -270,6 +281,7 @@ void TreeRegression::findBestSplitValueLargeQ(size_t nodeID, size_t varID, doubl
   size_t num_unique = data->getNumUniqueDataValues(varID);
   std::fill(counter, counter + num_unique, 0);
   std::fill(sums, sums + num_unique, 0);
+  auto t1 = std::chrono::high_resolution_clock::now();
 
   for (auto& sampleID : sampleIDs[nodeID]) {
     size_t index = data->getIndex(sampleID, varID);
@@ -280,7 +292,13 @@ void TreeRegression::findBestSplitValueLargeQ(size_t nodeID, size_t varID, doubl
 
   size_t n_left = 0;
   double sum_left = 0;
+  auto t2 = std::chrono::high_resolution_clock::now();
+  if(TIMING)  {
+      std::cout << "TIMING,overall setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+          << std::endl;
+  }
 
+  auto num_unique_t1 = std::chrono::high_resolution_clock::now();
   // Compute decrease of impurity for each split
   for (size_t i = 0; i < num_unique - 1; ++i) {
 
@@ -314,6 +332,11 @@ void TreeRegression::findBestSplitValueLargeQ(size_t nodeID, size_t varID, doubl
       best_varID = varID;
       best_decrease = decrease;
     }
+  }
+  auto num_unique_t2 = std::chrono::high_resolution_clock::now();
+  if(TIMING)  {
+      std::cout << "TIMING,num_unique loop," << std::chrono::duration_cast<std::chrono::microseconds>(num_unique_t2 - num_unique_t1).count()
+          << std::endl;
   }
 }
 
