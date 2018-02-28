@@ -294,7 +294,8 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 }
 
 double clip(double n, double lower, double upper) {
-    return std::max(lower, std::min(n, upper));
+    return n;
+    //return std::max(lower, std::min(n, upper));
 }
 
 void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
@@ -505,6 +506,11 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     /*****************************************************************
     // Maximum Likelihood
     *****************************************************************/
+    size_t MAX_NEWTON_ITER     = 50;
+    size_t MAX_LINESEARCH_ITER = 100;
+    double FTOL = 1e-4;
+    double GTOL = 1e-6;
+
     double llik;
     if( i == 0 ) {
         llik    = curr_llik;
@@ -515,6 +521,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     }
 
     double step_norm       = 0;
+    double grad_quad       = 0;
     size_t num_newton_iter = 0;
     size_t num_lineSearch_iters = 0;
     double dVL = 0, dVR=0; // partial derivatives
@@ -531,8 +538,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       prev_llik        = llik;
 
       num_newton_iter += 1;
-      if( num_newton_iter > 20 ) {
-          std::cout << "maxiter reached" << std::endl;
+      if( num_newton_iter > MAX_NEWTON_ITER ) {
+          if( debug ) 
+              std::cout << "maxiter reached" << std::endl;
           break;
       }
       if(debug) {
@@ -633,6 +641,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       delta_VR = temp_VR - curr_VR;
 
       step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
+      grad_quad = sqrt(dVL*delta_VL + dVR*delta_VR);
       auto compute_newton2  = std::chrono::high_resolution_clock::now();
       if(timing) {
           std::cout << "timing,compute newton," << std::chrono::duration_cast<std::chrono::microseconds>(compute_newton2 - compute_newton1).count()
@@ -659,6 +668,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           << "\tdelta_VL=" << delta_VL 
           << "\tdelta_VR=" << delta_VR 
           << "\tstep_norm=" << step_norm
+          << "\tgrad_quad=" << grad_quad
           << "\tdVL=" << dVL 
           << "\tdVR=" << dVR 
           << "\tdVL2=" << dVL2
@@ -672,7 +682,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           << std::endl;
       }
 
-	  if(isinf(llik) || num_newton_iter > 50) {
+	  if(isinf(llik)) {
 		  std::cout << "debug," 
                     << "curr.leaf" << "," 
                     << "y"         << "," 
@@ -744,20 +754,31 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           std::cout << "\t\tline search -- prev_llik=" << prev_llik 
               << "\tllik=" << llik 
               << "\tstepnorm=" << step_norm
+              << "\tgrad_quad=" << grad_quad
               << "\tdiff=" << llik - prev_llik 
               << "\tthreshold=" << threshold 
               << std::endl;
       }
       num_lineSearch_iters = 0;
-      while(llik - prev_llik < threshold && step_norm > 1e-6 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10) {
+      while(llik - prev_llik < threshold && grad_quad > GTOL && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10) {
           num_lineSearch_iters += 1;
-		  if(debug) {
-			  std::cout << "line search iteration = " << num_lineSearch_iters << std::endl;
-		  }
-		  if(num_lineSearch_iters > 100) {
-              if(debug)
-                  std::cout << "line search break" << std::endl;
-			  break;
+		  if(num_lineSearch_iters > MAX_LINESEARCH_ITER) {
+              if(debug) {
+                  std::cout << "line search break,"
+                      << "newton iter=" << num_newton_iter
+                      << ",llik before opt=" << curr_llik
+                      << ",prev_llik=" << prev_llik 
+                      << "\tllik=" << llik 
+                      << "\tstepnorm=" << step_norm
+                      << "\tgrad_quad=" << grad_quad
+                      << "\tdiff=" << llik - prev_llik 
+                      << "\tthreshold=" << threshold 
+                      << "\tstepsize=" << stepsize 
+                      << "\tdelta_VL=" << delta_VL
+                      << "\tdelta_VR=" << delta_VR
+                      << "\tnodeID=" << nodeID << std::endl;
+              }
+                  break;
 		  }
 
           stepsize   = stepsize * beta;
@@ -779,7 +800,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
                   << "\tllik=" << llik 
                   << "\tline search iters =" << num_lineSearch_iters
                   << "\tstepsize=" << stepsize
-                  << "\tstepnorm=" << step_norm
+                  << "\tstep_norm=" << step_norm
+                  << "\tgrad_quad=" << grad_quad
                   << "\tdiff=" << llik - prev_llik 
                   << "\tthreshold=" << threshold 
                   << "\tdelta_VL=" << delta_VL 
@@ -806,10 +828,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
               << std::endl;
       }
 
+      /*
       if(threshold == 0 && step_norm !=0 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10 ) {
           std::cout << "line search failed" << std::endl;
           exit(-1);
       }
+      */
 
       // don't accept if we didn't cross threshold
       if( llik - prev_llik > threshold && ( threshold != 0 ) ) {
@@ -825,7 +849,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
               << ",numIters=" << num_newton_iter
               << std::endl;
       }
-   } while( (llik - prev_llik) > 1e-4  && step_norm > 1e-6); 
+   } while( (llik - prev_llik) > FTOL  && grad_quad > GTOL); 
     auto full_newton2 = std::chrono::high_resolution_clock::now();
     if(timing) {
         std::cout << "timing,full newton," << std::chrono::duration_cast<std::chrono::microseconds>(full_newton2 - full_newton1).count()
