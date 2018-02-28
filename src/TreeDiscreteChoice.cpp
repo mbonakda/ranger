@@ -419,11 +419,12 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
   // iterate through all possible split values
   for (size_t i = 0; i < num_unique - 1; ++i) {
+      
+      // TODO: warm starting to previous V_L/V_R by moving this outside of the loop 
+      // causes optimization issues
+      double curr_VL = util[nodeID];
+      double curr_VR = util[nodeID];
 
-	  // TODO: warm starting to previous V_L/V_R by moving this outside of the loop 
-	  //       causes numerical issues. why?
-	  double curr_VL = util[nodeID];
-	  double curr_VR = util[nodeID];
 
 
     /***********************************************************************************
@@ -530,6 +531,10 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       prev_llik        = llik;
 
       num_newton_iter += 1;
+      if( num_newton_iter > 20 ) {
+          std::cout << "maxiter reached" << std::endl;
+          break;
+      }
       if(debug) {
           std::cout << "newton iteration = " << num_newton_iter 
                     << "\tprev_llik=" << prev_llik 
@@ -613,47 +618,21 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
       double delta_VL = 0, delta_VR = 0;
       if(nodeID == 0) { // univariate newton
         delta_VL = -(1.0 / dVL2)*dVL;
-		if(delta_VL > 5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VL = 5;
-		} 
-		if(delta_VL < -5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VL = -5;
-		}
 		delta_VR = -delta_VL;
       } else { // newton otherwise
         delta_VL      = -dtmnt*((dVR2) *dVL - dVLVR*dVR);
-		if(delta_VL > 5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VL = 5;
-		} 
-		if(delta_VL < -5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VL = -5;
-		}
         delta_VR      = -dtmnt*(-dVLVR*dVL + (dVL2)*dVR);
-		if(delta_VR > 5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VR = 5;
-		} 
-		if(delta_VR < -5) {
-			if(debug)
-				std::cout << "clipping deltaVL=" << delta_VL << std::endl;
-			//delta_VR = -5;
-		}
       }
 
-      step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
       /*****************************************************************/
 
       double temp_VL = clip(curr_VL + delta_VL, -20.0, 20.0);
       double temp_VR = clip(curr_VR + delta_VR, -20.0, 20.0);
+
+      delta_VL = temp_VL - curr_VL;
+      delta_VR = temp_VR - curr_VR;
+
+      step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
       auto compute_newton2  = std::chrono::high_resolution_clock::now();
       if(timing) {
           std::cout << "timing,compute newton," << std::chrono::duration_cast<std::chrono::microseconds>(compute_newton2 - compute_newton1).count()
@@ -760,8 +739,17 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
         threshold            = stepsize*alpha*thresh_factor;
       }
 
+
+      if(debug) {
+          std::cout << "\t\tline search -- prev_llik=" << prev_llik 
+              << "\tllik=" << llik 
+              << "\tstepnorm=" << step_norm
+              << "\tdiff=" << llik - prev_llik 
+              << "\tthreshold=" << threshold 
+              << std::endl;
+      }
       num_lineSearch_iters = 0;
-      while(llik - prev_llik < threshold && step_norm > 1e-6 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10){
+      while(llik - prev_llik < threshold && step_norm > 1e-6 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10) {
           num_lineSearch_iters += 1;
 		  if(debug) {
 			  std::cout << "line search iteration = " << num_lineSearch_iters << std::endl;
@@ -789,6 +777,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           if(debug) {
               std::cout << "\t\tprev_llik=" << prev_llik 
                   << "\tllik=" << llik 
+                  << "\tline search iters =" << num_lineSearch_iters
                   << "\tstepsize=" << stepsize
                   << "\tstepnorm=" << step_norm
                   << "\tdiff=" << llik - prev_llik 
@@ -817,7 +806,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
               << std::endl;
       }
 
-      if(threshold == 0 && step_norm !=0) {
+      if(threshold == 0 && step_norm !=0 && fabs(dVL) > 1e-10 && fabs(dVR) > 1e-10 ) {
           std::cout << "line search failed" << std::endl;
           exit(-1);
       }
