@@ -266,7 +266,8 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
     // Find best split value, if ordered consider all values as split values, else all 2-partitions
     if ((*is_ordered_variable)[varID]) {
       auto t1 = std::chrono::high_resolution_clock::now();
-      findBestSplitValue(nodeID, varID, num_samples_node, best_value, best_varID, best_increase);
+      size_t best_split_idx = split_finder(nodeID, varID, num_samples_node);
+      findBestSplitValue(nodeID, varID, num_samples_node, best_value, best_varID, best_increase, best_split_idx);
       auto t2 = std::chrono::high_resolution_clock::now();
       if(timing) {
           std::cout << "timing,findBestSplitValue," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
@@ -298,8 +299,238 @@ double clip(double n, double lower, double upper) {
     //return std::max(lower, std::min(n, upper));
 }
 
+int TreeDiscreteChoice::split_finder(size_t nodeID, 
+        size_t varID, 
+        size_t num_samples_node) {
+
+    if(debug) {
+        std::cout << "finding best split value,nodeID=" << nodeID
+            << "\tcovariate=" << data->getVariableNames()[varID]  
+            << ",varID=" << varID
+            << std::endl;
+    }
+    // Set counters to 0
+    size_t num_unique = data->getNumUniqueDataValues(varID);
+    std::fill(counter, counter + num_unique, 0);
+    std::fill(sums, sums + num_unique, 0);
+
+    // number of positive choices in current leaf, and potential left/right leaf
+    size_t c_star      = 0, c_l = 0, c_r = 0; 
+    size_t num_samples = 0;
+
+    size_t agentID_varID = data->getVariableID("agentID");
+
+    // agentID -> num samples for pre-split node
+    std::unordered_map<size_t, size_t> n_star; 
+    // agentID -> num samples for left/right leaves
+    std::unordered_map<size_t, size_t> n_l, n_r; 
+    // value index --> agentID --> numSamples
+    std::unordered_map<size_t, std::unordered_map<size_t, size_t> > idx_agent_n; 
+    // all agentIDs in this node
+    std::vector<size_t> node_agentIDs;
+    // unique agentIDs in this node
+    std::unordered_set<size_t> unique_node_agentIDs;
+    // agentID --> partition func
+    std::unordered_map<size_t, double> agent_Z;
+    // idx --> sampleIDs
+    std::unordered_map<size_t, std::unordered_set<size_t>> idx_to_sID;
+    // sampleIDs in left/right leaves
+    std::unordered_set<size_t> left_sIDs, right_sIDs;
+
+
+    // setup initial state for optimization before iterating through split values
+    // TODO: some things can be moved up a level. do not need to
+    //       compute these for every split variable (they don't change)!
+    auto t1 = std::chrono::high_resolution_clock::now();
+    for (auto& sampleID : sampleIDs[nodeID]) {
+        size_t index                  = data->getIndex(sampleID, varID);
+        size_t agentID                = data->get(sampleID, agentID_varID);
+
+        double response               = data->get(sampleID, dependent_varID);
+        sums[index]                  += response;
+        c_star                       += response;
+
+        n_star[agentID]              += 1; // TODO: up a level
+
+        // TODO: fix n_r and idx_agent_n with bootstrap
+        n_r[agentID]                 += 1; // assume all samples start in right leaf TODO: up a level
+        idx_agent_n[index][agentID]  += 1;  
+
+        num_samples                  += 1; // TODO: up a level
+
+        //node_agentIDs.push_back(agentID); // TODO: up a level
+        unique_node_agentIDs.insert(agentID); // TODO: up a level
+
+        auto itr = idx_to_sID.find(index); // TODO: up a few levels (shouldn't change for the entire fitting process)
+        if( itr == idx_to_sID.end() ) {
+            idx_to_sID.emplace(index, std::unordered_set<size_t>());
+        }
+        idx_to_sID[index].insert(sampleID);
+
+        right_sIDs.insert(sampleID);
+        ++counter[index];
+    }
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    if(timing)  {
+        std::cout << "timing,intermediate setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+            << std::endl;
+    }
+
+    // post-process to account for bootstrapping
+    // TODO: inefficient
+    for( auto & ix_iter : idx_agent_n ) {
+        for(auto a_to_n :ix_iter.second ) {
+            idx_agent_n[ix_iter.first][a_to_n.first] /= agentID_to_N[a_to_n.first];
+        }
+    }
+    for( auto a_id : unique_node_agentIDs ) {
+        n_r[a_id] /= agentID_to_N[a_id];
+        n_star[a_id] /= agentID_to_N[a_id];
+    }
+
+    //TODO inefficient
+    for( auto a_id : unique_node_agentIDs ) {
+        for(size_t i = 0; i < agentID_to_N[a_id]; ++i) {
+            node_agentIDs.push_back(a_id); 
+        }
+    }
+
+    // compute partition funcs for each agent
+    for(auto a_id: unique_node_agentIDs) {
+        for(auto s_id:agentID_to_sampleIDs[a_id]) {
+            size_t leaf_id = sampleID_to_leafID[s_id];
+            agent_Z[a_id] += exp(util[leaf_id]);
+        }
+    }
+
+    size_t n_left = 0;
+    double sum_left = 0, sum_right = 0; // TODO: do we need these?
+    // compute current likelihood
+    double V_star    = util[nodeID];
+
+    t2 = std::chrono::high_resolution_clock::now();
+    if(timing)  {
+        std::cout << "timing,overall setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+            << std::endl;
+    }
+
+
+    double max_grad_norm = 0;
+    int best_idx      = -1;
+    // gradient norm
+    // iterate through all possible split values
+    for (size_t i = 0; i < num_unique - 1; ++i) {
+
+        double curr_VL = util[nodeID];
+        double curr_VR = util[nodeID];
+
+
+
+        /***********************************************************************************
+        // update constants for optimization and check for short circuits
+         ***********************************************************************************/
+        // Stop if nothing here
+        if (counter[i] == 0) {
+            continue;
+        }
+
+        t1 = std::chrono::high_resolution_clock::now();
+
+        c_l += sums[i];
+        c_r  = c_star - c_l;
+        for(auto a_to_n :idx_agent_n[i] ) {
+            n_l[a_to_n.first] += a_to_n.second;
+            n_r[a_to_n.first] = n_star[a_to_n.first] - n_l[a_to_n.first];
+        }
+
+        for(auto sID : idx_to_sID[i]) {
+            right_sIDs.erase(sID);
+            left_sIDs.insert(sID);
+        }
+
+        n_left         += counter[i];
+        sum_left       += sums[i];
+        sum_right       = c_star - sum_left;
+
+        // Stop if right child empty
+        size_t n_right  = num_samples_node - n_left;
+        if (n_right == 0) {
+            break;
+        }
+
+        t2 = std::chrono::high_resolution_clock::now();
+        if(timing) {
+            std::cout << "timing,per-iter setup," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count()
+                << std::endl;
+        }
+        /***********************************************************************************/
+
+        double grad_norm       = 0;
+        double dVL = 0, dVR=0; // partial derivatives
+        /*****************************************************************
+        // compute gradient norm
+         *****************************************************************/
+        if(nodeID == 0) {
+            dVL += static_cast<double>(c_l) - static_cast<double>(c_r);
+        } else {
+            dVL += static_cast<double>(c_l);
+            dVR += static_cast<double>(c_r);
+        }
+        for(auto a_id: node_agentIDs) {
+
+            double Z_curr = agent_Z[a_id] 
+                - n_l[a_id]*exp(V_star) + n_l[a_id]*exp(curr_VL) 
+                - n_r[a_id]*exp(V_star) + n_r[a_id]*exp(curr_VR);
+
+            if( nodeID == 0) {
+                double   mm  = ( n_l[a_id]*exp(curr_VL) - n_r[a_id]*exp(curr_VR) );
+                double   pp  = ( n_l[a_id]*exp(curr_VL) + n_r[a_id]*exp(curr_VR) );
+                dVL      -=  mm / Z_curr;
+                dVR       =  -dVL;
+                if(debug > 1) { 
+                    std::cout << std::fixed 
+                        << "\t\tagentID=" << a_id 
+                        << "\tmm=" << mm
+                        << "\tpp=" << pp
+                        << "\tZ_curr=" << Z_curr 
+                        << "\tn_l=" << n_l[a_id] 
+                        << "\tn_r=" << n_r[a_id] 
+                        << "\texp(curr_VL)=" << exp(curr_VL)
+                        << "\texp(curr_VR)=" << exp(curr_VR)
+                        << "\tdVL=" << dVL  
+                        << "\tdVR=" << dVR
+                        << "\tc_l=" << c_l
+                        << "\tc_r=" << c_r
+                        << "\tprecision=" << dbl::max_digits10
+                        << std::endl;
+                }
+            } else {
+                dVL      -= n_l[a_id]*exp(curr_VL) / Z_curr;
+                dVR      -= n_r[a_id]*exp(curr_VR) / Z_curr;
+            }
+        }
+
+
+        grad_norm = sqrt(dVL*dVL + dVR*dVR);
+        if(grad_norm > max_grad_norm) {
+            if( debug ) {
+                std::cout << "best split index,"
+                          << "\told=" << max_grad_norm
+                          << "\told_idx=" << best_idx
+                          << "\tnew=" << grad_norm
+                          << "\tnew_idx=" << i << std::endl;
+            }
+            max_grad_norm = grad_norm;
+            best_idx      = i;
+        }
+    }
+
+    return best_idx;
+}
+
 void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
-    double& best_value, size_t& best_varID, double& best_increase) {
+    double& best_value, size_t& best_varID, double& best_increase, int split_finder_idx) {
 
   if(debug) {
       std::cout << "finding best split value,nodeID=" << nodeID
@@ -404,11 +635,8 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
   size_t n_left = 0;
   double sum_left = 0, sum_right = 0; // TODO: do we need these?
-
-  
   // compute current likelihood
   double curr_llik = compute_log_likelihood(agent_Z, util, node_agentIDs);
-
   double V_star    = util[nodeID];
 
   t2 = std::chrono::high_resolution_clock::now();
@@ -417,7 +645,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           << std::endl;
   }
 
-
+  
   // iterate through all possible split values
   for (size_t i = 0; i < num_unique - 1; ++i) {
       
@@ -454,6 +682,9 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     sum_left       += sums[i];
     sum_right       = c_star - sum_left;
 
+    if( i != split_finder_idx ) {
+        continue;
+    }
     // Stop if right child empty
     size_t n_right  = num_samples_node - n_left;
     if (n_right == 0) {
@@ -522,6 +753,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
     double step_norm       = 0;
     double grad_quad       = 0;
+    double grad_norm       = 0;
     size_t num_newton_iter = 0;
     size_t num_lineSearch_iters = 0;
     double dVL = 0, dVR=0; // partial derivatives
@@ -668,6 +900,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
 
       step_norm = sqrt( (delta_VL*delta_VL) + (delta_VR*delta_VR) );
       grad_quad = sqrt(dVL*delta_VL + dVR*delta_VR);
+      grad_norm = sqrt(dVL*dVL + dVR*dVR);
       auto compute_newton2  = std::chrono::high_resolution_clock::now();
       if(timing) {
           std::cout << "timing,compute newton," << std::chrono::duration_cast<std::chrono::microseconds>(compute_newton2 - compute_newton1).count()
@@ -910,6 +1143,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
     } else {
       //std::cout << "index=" << i << " not good enough with increase=" << increase << std::endl;
     }
+    break;
   }
 }
 

@@ -65,7 +65,8 @@ private:
   // Called by splitNodeInternal(). Sets split_varIDs and split_values.
   bool findBestSplit(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
   void findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
-      double& best_value, size_t& best_varID, double& best_decrease);
+      double& best_value, size_t& best_varID, double& best_decrease, int split_finder_idx);
+  int split_finder(size_t nodeID, size_t varID, size_t num_samples_node);
 
 
   double computePredictionMSE();
