@@ -63,7 +63,7 @@ TreeDiscreteChoice::~TreeDiscreteChoice() {
 }
 
 void TreeDiscreteChoice::initInternal() {
-    std::cout.precision(17);
+    std::cout.precision(50);
     // Init counters if not in memory efficient mode
     if (!memory_saving_splitting) {
         size_t max_num_splits = data->getMaxNumUniqueValues();
@@ -602,40 +602,66 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
           dVL2     -= ( n_l[a_id]*exp(curr_VL) * ( Z_curr - ( n_l[a_id]*exp(curr_VL) ) ) ) / ( Z_curr * Z_curr );
           dVR2     -= ( n_r[a_id]*exp(curr_VR) * ( Z_curr - ( n_r[a_id]*exp(curr_VR) ) ) ) / ( Z_curr * Z_curr );
           dVLVR    += ( n_l[a_id]*exp(curr_VL) * n_r[a_id]*exp(curr_VR) ) / (Z_curr * Z_curr);
-		  if(debug > 1) { 
-			  std::cout << std::fixed 
-				  << "\t\tagentID=" << a_id 
-				  << "\tn_l=" << n_l[a_id] 
-				  << "\tn_r=" << n_r[a_id] 
-				  << "\texp(curr_VL)=" << exp(curr_VL)
-				  << "\texp(curr_VR)=" << exp(curr_VR)
-				  << "\tZ_curr=" << Z_curr 
-				  << "\tdVL=" << dVL  
-				  << "\tdVR=" << dVR
-				  << "\tc_l=" << c_l
-				  << "\tc_r=" << c_r
-				  << "\tprecision=" << dbl::max_digits10
-				  << std::endl;
-		  }
+          if(debug > 1 && nodeID == 2) { 
+            std::cout << std::fixed 
+              << "\t\tagentID=" << a_id 
+              << "\tn_l=" << n_l[a_id] 
+              << "\tn_r=" << n_r[a_id] 
+              << "\texp(curr_VL)=" << exp(curr_VL)
+              << "\texp(curr_VR)=" << exp(curr_VR)
+              << "\tZ_curr=" << Z_curr 
+              << "\tdVL=" << dVL  
+              << "\tdVR=" << dVR
+              << "\tc_l=" << c_l
+              << "\tc_r=" << c_r
+              << "\tdVL=" << dVL
+              << "\tdVR=" << dVR
+              << "\tdVLVR=" << dVLVR
+              << "\tdVL2=" << dVL2
+              << "\tdVR2=" << dVR2
+              << std::endl;
+          }
         }
-
       }
 
       double dtmnt = 1.0 / (dVL2*dVR2 - dVLVR*dVLVR);
 
+
       double delta_VL = 0, delta_VR = 0;
       if(nodeID == 0) { // univariate newton
         delta_VL = -(1.0 / dVL2)*dVL;
-		delta_VR = -delta_VL;
+        delta_VR = -delta_VL;
       } else { // newton otherwise
         delta_VL      = -dtmnt*((dVR2) *dVL - dVLVR*dVR);
         delta_VR      = -dtmnt*(-dVLVR*dVL + (dVL2)*dVR);
+        // hessian modification
+        if( (fabs(delta_VL) > 100 || fabs(delta_VR) > 100) && (dtmnt > 1e8 || dtmnt < 0) ) {
+          double pre_dtmnt         = dtmnt;
+          double pre_delta_VL      = delta_VL;
+          double pre_delta_VR      = delta_VR;
+          dVL2 -= 1e-8;
+          dVR2 -= 1e-8;
+          dtmnt = 1.0 / (dVL2*dVR2 - dVLVR*dVLVR);
+
+          delta_VL      = -dtmnt*((dVR2) *dVL - dVLVR*dVR);
+          delta_VR      = -dtmnt*(-dVLVR*dVL + (dVL2)*dVR);
+          if(debug) {
+            std::cout << "hessian modification" 
+                      << "\tpre_dtmnt=" << pre_dtmnt
+                      << "\tdtmnt="     << dtmnt 
+                      << "\tpre_delta_VL=" << pre_delta_VL
+                      << "\tdelta_VL=" << delta_VL
+                      << "\tpre_delta_VR=" << pre_delta_VR
+                      << "\tdelta_VR=" << delta_VR
+                      << std::endl;
+          }
+        }
       }
 
       /*****************************************************************/
 
-      double temp_VL = clip(curr_VL + delta_VL, -20.0, 20.0);
-      double temp_VR = clip(curr_VR + delta_VR, -20.0, 20.0);
+      double temp_VL = clip(curr_VL + delta_VL, -75.0, 75.0);
+      double temp_VR = clip(curr_VR + delta_VR, -75.0, 75.0);
 
       delta_VL = temp_VL - curr_VL;
       delta_VR = temp_VR - curr_VR;
@@ -995,8 +1021,8 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
                          - n_l[agent_id]*exp(V_star) + n_l[agent_id]*exp(V_L) 
                          - n_r[agent_id]*exp(V_star) + n_r[agent_id]*exp(V_R);
 
-        if( debug && nodeID ==2 ) {
-          std::cout << "temp log-lik,"
+        if( debug > 1 && nodeID ==2 ) { 
+          std::cout << std::fixed << "temp log-lik,"
             << ",agentID," << agent_id
             << ",prev Z," << agent_Z.at(agent_id)
             << ",new Z," << Z_curr;
@@ -1009,22 +1035,22 @@ double TreeDiscreteChoice::compute_temp_log_likelihood(const std::unordered_map<
             const bool is_r = right_sIDs.find(sample_id) != right_sIDs.end();
             if(is_r) {
                 llik += V_R - log(Z_curr);
-                if( debug && nodeID ==2 ) {
+                if( debug > 1 && nodeID ==2 ) {
                   std::cout << ",V_R," << V_R;
                 }
             } else {
                 llik += V_L - log(Z_curr);
-                if( debug && nodeID ==2 ) {
+                if( debug > 1 && nodeID ==2 ) {
                   std::cout << ",V_L," << V_L;
                 }
             }
         } else {
             llik += curr_util[leaf_id] - log(Z_curr);
-                if( debug && nodeID ==2 ) {
+                if( debug > 1 && nodeID ==2 ) {
                   std::cout << ",V," << curr_util[leaf_id];
                 }
         }
-        if( debug && nodeID ==2 ) {
+        if( debug > 1 && nodeID ==2 ) {
           std::cout << ",log(newZ)," << log(Z_curr)
                     << ",llik," << llik << std::endl;
         }
