@@ -65,6 +65,8 @@ private:
   // Called by splitNodeInternal(). Sets split_varIDs and split_values.
   bool findBestSplit(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
   void findBestSplitValue(size_t nodeID, size_t varID, size_t num_samples_node,
+      double& best_value, size_t& best_varID, double& best_decrease);
+  void findBestSplitValue2(size_t nodeID, size_t varID, size_t num_samples_node,
       double& best_value, size_t& best_varID, double& best_decrease, int split_finder_idx);
   int split_finder(size_t nodeID, size_t varID, size_t num_samples_node);
 
@@ -101,7 +103,7 @@ private:
   // agentID -> sampleID with Y=1
   std::unordered_map<size_t, size_t> agentID_to_choiceID; 
   //   agentID -> # of times it appears in bootstrap sample
-  std::unordered_map<size_t, size_t> agentID_to_N;
+  std::unordered_map<size_t, int> agentID_to_N;
   // log-lik contribution of each node
   std::vector<double> llik;
   // estimated utility at each node
