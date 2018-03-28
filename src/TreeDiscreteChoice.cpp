@@ -289,9 +289,11 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 
   // Stop if no good split found
   if (best_increase <= 0) {
+      std::cout << "not splitting nodeID=" << nodeID << std::endl;
       return true;
   }
 
+  std::cout << "splitting nodeID=" << nodeID << std::endl;
   // Save best values
   split_varIDs[nodeID] = best_varID;
   split_values[nodeID] = best_value;
@@ -1743,7 +1745,7 @@ void TreeDiscreteChoice::findBestSplitValue2(size_t nodeID, size_t varID, size_t
 }
 
 // adjust all leaves 
-void TreeDiscreteChoice::grow_post_process(){
+void TreeDiscreteChoice::grow_post_process() {
 
     std::unordered_map<size_t, double> agent_Z;
     std::unordered_map<size_t, double> leafID_to_partial;
@@ -1755,6 +1757,7 @@ void TreeDiscreteChoice::grow_post_process(){
 
     // gradient descent
     double prev_llik;
+    size_t num_iterations = 0;
     do {
 
         prev_llik       = curr_llik;
@@ -1762,6 +1765,15 @@ void TreeDiscreteChoice::grow_post_process(){
 
         // armijo line search
         curr_llik = backtracking(leafID_to_partial, agent_Z, curr_util, prev_llik);
+        num_iterations += 1;
+        if(debug) {
+            std::cout << "growPostProcess"
+                      << "\tnum_iter=" << num_iterations
+                      << "\tprev_llik=" << prev_llik
+                      << "\tcurr_llik=" << curr_llik
+                      << "\tdiff=" << curr_llik - prev_llik
+                      << std::endl;
+        }
 
     } while ( curr_llik - prev_llik > 1e-5 );
 
@@ -1796,6 +1808,18 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
     double curr_llik = compute_log_likelihood(agent_Z, temp_util, agentIDs);
 
     size_t num_iter = 0;
+    if(debug) {
+        std::cout << "backtracking" 
+            << "\tnum_iterations=" << num_iter
+            << "\tgrad_norm="      << grad_norm 
+            << "\tgrad_norm_inf="  << max_grad_component
+            << "\tprev_llik=" << prev_llik
+            << "\tcurr_llik=" << curr_llik
+            << "\tdiff=" << curr_llik - prev_llik
+            << "\tthresh=" << alpha*grad_norm_squared*stepsize
+            << "\tnumLeaves=" << leafIDs.size()
+            << std::endl;
+    }
     while(curr_llik - prev_llik < alpha*grad_norm_squared*stepsize  && grad_norm > 1e-4) {
         num_iter += 1;
         temp_util  = curr_util;
@@ -1807,8 +1831,22 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
         compute_partition_func(agent_Z, temp_util);
         curr_llik = compute_log_likelihood(agent_Z, temp_util, agentIDs);
 
+        if(1) {
+            std::cout << "backtracking" 
+                      << "\tnum_iterations=" << num_iter
+                      << "\tgrad_norm="      << grad_norm 
+                      << "\tgrad_norm_inf="  << max_grad_component
+                      << "\tprev_llik=" << prev_llik
+                      << "\tcurr_llik=" << curr_llik
+                      << "\tdiff=" << curr_llik - prev_llik
+                      << "\tthresh=" << alpha*grad_norm_squared*stepsize
+                      << std::endl;
+
+        }
+
         if(num_iter > 1000) {
             std::cout << "global adjustment line search failed" << std::endl;
+            exit(-1);
         }
     }
 

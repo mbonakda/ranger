@@ -204,11 +204,16 @@ void Tree::grow(std::vector<double>* variable_importance) {
     ++i;
   }
 
-  grow_post_process();
-  
   auto t2 = std::chrono::high_resolution_clock::now();
-  time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
+  std::cout << "timing,growTree," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << std::endl;
 
+
+  t1 = std::chrono::high_resolution_clock::now();
+  grow_post_process();
+  t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "timing,growPostProcess," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << std::endl;
+  
+  //time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
   //std::cout << "number of nodes," << sampleIDs.size() << std::endl;
 
   if(!sc_variable_IDs.empty()) {
