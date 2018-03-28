@@ -53,7 +53,7 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool use_unordered_variable_names, bool save_memory, uint splitrule_r, 
     std::vector<double>& case_weights, bool use_case_weights, bool predict_all, 
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
-    uint num_random_splits, std::vector<std::string> sc_variable_names, int max_tree_height) {
+    uint num_random_splits, std::vector<std::string> sc_variable_names, int max_tree_height, bool speedy) {
 
   /*
      if(!prediction_mode)
@@ -140,7 +140,7 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
         importance_mode, min_node_size, split_select_weights, always_split_variable_names, status_variable_name,
         prediction_mode, sample_with_replacement, unordered_variable_names, save_memory, splitrule, case_weights, 
         predict_all, keep_inbag, sample_fraction, alpha, minprop, holdout, prediction_type, num_random_splits,
-        sc_variable_names, max_tree_height);
+        sc_variable_names, max_tree_height, speedy);
 
     // Load forest object if in prediction mode
     if (prediction_mode) {

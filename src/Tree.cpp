@@ -60,7 +60,7 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
     std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
     bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
     double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-    std::vector<size_t>* sc_variable_IDs, int maxTreeHeight) {
+    std::vector<size_t>* sc_variable_IDs, int maxTreeHeight, bool speedy) {
 
   this->data = data;
   this->mtry = mtry;
@@ -98,6 +98,7 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
   }
 
   max_tree_height = maxTreeHeight;
+  this->speedy    = speedy;
 
   initInternal();
 }

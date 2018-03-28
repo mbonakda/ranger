@@ -84,7 +84,7 @@ public:
       std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
       bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
       double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-      std::vector<size_t>* sc_variable_IDs, int maxTreeHeight);
+      std::vector<size_t>* sc_variable_IDs, int maxTreeHeight, bool speedy);
 
   virtual void initInternal() = 0;
 
@@ -254,6 +254,8 @@ protected:
   // sampleID -> leafID
   std::unordered_map<size_t, size_t> sampleID_to_leafID; 
   std::unordered_set<size_t>  leafIDs;
+
+  bool speedy;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Tree);

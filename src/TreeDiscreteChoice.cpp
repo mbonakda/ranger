@@ -261,13 +261,12 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
   size_t best_varID = 0;
   double best_value = 0;
 
-  bool SPEEDY = true;
   // For all possible split variables
   for (auto& varID : possible_split_varIDs) {
     // Find best split value, if ordered consider all values as split values, else all 2-partitions
     if ((*is_ordered_variable)[varID]) {
       auto t1 = std::chrono::high_resolution_clock::now();
-      if(SPEEDY) {
+      if(speedy) {
           size_t best_split_idx = split_finder(nodeID, varID, num_samples_node);
           findBestSplitValue2(nodeID, varID, num_samples_node, best_value, best_varID, best_increase, best_split_idx);
       } else {
@@ -289,11 +288,9 @@ bool TreeDiscreteChoice::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 
   // Stop if no good split found
   if (best_increase <= 0) {
-      std::cout << "not splitting nodeID=" << nodeID << std::endl;
       return true;
   }
 
-  std::cout << "splitting nodeID=" << nodeID << std::endl;
   // Save best values
   split_varIDs[nodeID] = best_varID;
   split_values[nodeID] = best_value;
@@ -1831,7 +1828,7 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
         compute_partition_func(agent_Z, temp_util);
         curr_llik = compute_log_likelihood(agent_Z, temp_util, agentIDs);
 
-        if(1) {
+        if(debug) {
             std::cout << "backtracking" 
                       << "\tnum_iterations=" << num_iter
                       << "\tgrad_norm="      << grad_norm 

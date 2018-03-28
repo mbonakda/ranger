@@ -157,7 +157,7 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
     std::vector<std::string>& unordered_variable_names, bool memory_saving_splitting, SplitRule splitrule,
     std::vector<double>& case_weights, bool predict_all, bool keep_inbag, double sample_fraction, double alpha,
     double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits, 
-    std::vector<std::string>& sc_variable_names, int max_tree_height) {
+    std::vector<std::string>& sc_variable_names, int max_tree_height, bool speedy) {
 
   this->verbose_out = verbose_out;
 
@@ -196,6 +196,7 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
   }
 
   m_max_tree_height = max_tree_height;
+  this->speedy      = speedy;
   
 }
 
@@ -440,7 +441,7 @@ void Forest::grow() {
     trees[i]->init(data, mtry, dependent_varID, num_samples, tree_seed, &deterministic_varIDs, &split_select_varIDs,
         tree_split_select_weights, importance_mode, min_node_size, &no_split_variables, sample_with_replacement,
         &is_ordered_variable, memory_saving_splitting, splitrule, &case_weights, keep_inbag, sample_fraction, alpha,
-        minprop, holdout, num_random_splits, &sc_variable_IDs, m_max_tree_height);
+        minprop, holdout, num_random_splits, &sc_variable_IDs, m_max_tree_height, speedy);
   }
 
 // Init variable importance
