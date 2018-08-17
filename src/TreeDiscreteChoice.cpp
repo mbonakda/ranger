@@ -1843,7 +1843,7 @@ double TreeDiscreteChoice::backtracking(const std::unordered_map<size_t,double>&
 
         if(num_iter > 1000) {
             std::cout << "global adjustment line search failed" << std::endl;
-            exit(-1);
+            //exit(-1);
         }
     }
 
