@@ -60,6 +60,7 @@ private:
   std::unordered_map<size_t, std::vector<size_t>> agentID_to_sampleIDs; 
   double dcrf_numItems;
   double dcrf_numAgents;
+  size_t agentID_varID;
 
   DISALLOW_COPY_AND_ASSIGN(ForestDiscreteChoice);
 };

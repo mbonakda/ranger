@@ -137,6 +137,7 @@ private:
   size_t num_splits;
   size_t debug;
   size_t timing;
+  size_t agentID_varID;
 
   DISALLOW_COPY_AND_ASSIGN(TreeDiscreteChoice);
 };

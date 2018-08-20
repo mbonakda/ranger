@@ -77,6 +77,8 @@ void TreeDiscreteChoice::initInternal() {
         sums = new double[max_num_splits];
     }
 
+    agentID_varID = data->getVariableID("agentID");
+
     for( auto & itr : agentID_to_sampleIDs ) {
         auto a_id = itr.first;
         for( auto s_id : itr.second ) {
@@ -204,10 +206,12 @@ void TreeDiscreteChoice::splitNode_post_process() {
 bool TreeDiscreteChoice::splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs) {
 
   //TODO: do better here
-  size_t agentID_varID = data->getVariableID("agentID");
-  possible_split_varIDs.erase(std::remove(possible_split_varIDs.begin(), 
-                                          possible_split_varIDs.end(), agentID_varID), 
-          possible_split_varIDs.end());
+  //size_t agentID_varID = data->getVariableID("agentID");
+  //possible_split_varIDs.erase(std::remove(possible_split_varIDs.begin(), 
+  //                                        possible_split_varIDs.end(), agentID_varID), 
+  //        possible_split_varIDs.end());
+  std::sort(possible_split_varIDs.begin(), possible_split_varIDs.end());
+
 
   // Check node size, stop if maximum reached
   if (sampleIDs[nodeID].size() <= min_node_size) {
@@ -316,7 +320,7 @@ int TreeDiscreteChoice::split_finder(size_t nodeID,
     size_t c_star      = 0, c_l = 0, c_r = 0; 
     size_t num_samples = 0;
 
-    size_t agentID_varID = data->getVariableID("agentID");
+    //size_t agentID_varID = data->getVariableID("agentID");
 
     // agentID -> num samples for pre-split node
     std::unordered_map<size_t, int> n_star; 
@@ -527,7 +531,7 @@ void TreeDiscreteChoice::findBestSplitValue(size_t nodeID, size_t varID, size_t 
   size_t c_star      = 0, c_l = 0, c_r = 0; 
   size_t num_samples = 0;
 
-  size_t agentID_varID = data->getVariableID("agentID");
+  //size_t agentID_varID = data->getVariableID("agentID");
 
   // agentID -> num samples for pre-split node
   std::unordered_map<size_t, size_t> n_star; 
@@ -1141,7 +1145,7 @@ void TreeDiscreteChoice::findBestSplitValue2(size_t nodeID, size_t varID, size_t
   size_t c_star      = 0, c_l = 0, c_r = 0; 
   size_t num_samples = 0;
 
-  size_t agentID_varID = data->getVariableID("agentID");
+  //size_t agentID_varID = data->getVariableID("agentID");
 
   // agentID -> num samples for pre-split node
   std::unordered_map<size_t, size_t> n_star; 

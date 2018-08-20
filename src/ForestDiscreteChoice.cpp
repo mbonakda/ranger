@@ -80,7 +80,8 @@ void ForestDiscreteChoice::initInternal(std::string status_variable_name) {
         data->sort();
     }
 
-    size_t agentID_varID = data->getVariableID("agentID");
+    agentID_varID = data->getVariableID("agentID");
+    no_split_variables.push_back(agentID_varID);
     for( size_t row = 0; row < num_samples; ++row ) {
         size_t a_id = data->get(row , agentID_varID);
         agentIDs.insert(a_id);
