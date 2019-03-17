@@ -92,6 +92,11 @@ bool TreeClassification::splitNodeInternal(size_t nodeID, std::vector<size_t>& p
     return true;
   }
 
+  if(node_depth[nodeID] == max_tree_height) {
+    split_values[nodeID] = estimate(nodeID);
+    return true;
+  }
+
 // Check if node is pure and set split_value to estimate and stop if pure
   bool pure = true;
   double pure_value = 0;

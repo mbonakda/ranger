@@ -127,7 +127,7 @@ treeInfo <- function(object, tree = 1) {
     if (!is.null(forest$levels)) {
       result$prediction <- factor(result$prediction, levels = forest$class.values, labels = forest$levels)
     }
-  } else if (forest$treetype == "Regression") {
+  } else if (forest$treetype == "Regression" || forest$treetype == "Discrete Choice") {
     result$prediction <- forest$split.values[[tree]]
     result$prediction[!result$terminal] <- NA
   } else if (forest$treetype == "Probability estimation") {

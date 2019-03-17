@@ -1166,8 +1166,6 @@ void TreeDiscreteChoice::findBestSplitValue2(size_t nodeID, size_t varID, size_t
 
 
   // setup initial state for optimization before iterating through split values
-  // TODO: some things can be moved up a level. do not need to
-  //       compute these for every split variable (they don't change)!
   auto t1 = std::chrono::high_resolution_clock::now();
   for (auto& sampleID : sampleIDs[nodeID]) {
     size_t index                  = data->getIndex(sampleID, varID);
