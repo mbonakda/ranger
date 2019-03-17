@@ -792,6 +792,7 @@ void TreeRegression::reshape() {
 
 }
 
+/*
 void TreeRegression::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std::pair<size_t, size_t>> & id_edges) {
 
   double DIVIDE_MULT = 1e3;
@@ -859,11 +860,8 @@ void TreeRegression::goldilocks_opt(const std::set<size_t> & leaves, const std::
     M->solve();
     auto t2 = std::chrono::high_resolution_clock::now();
 
-    /*
     std::cout << "mosek solve took "
       << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
-      << " seconds\n";
-      */
 
     //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
 
@@ -880,4 +878,5 @@ void TreeRegression::goldilocks_opt(const std::set<size_t> & leaves, const std::
   }
 
 }
+*/
 

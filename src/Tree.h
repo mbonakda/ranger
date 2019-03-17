@@ -39,15 +39,15 @@
 #include <chrono> //SC
 
 #include <limits>
-#include "fusion.h"
+//#include "fusion.h"
 #include <memory>
 #include <iostream>
 
 #include "globals.h"
 #include "Data.h"
 
-using namespace mosek::fusion;
-using namespace monty;
+//using namespace mosek::fusion;
+//using namespace monty;
 
 // shape-constrained node id -> vector of leaf (node id, value) pairs
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 

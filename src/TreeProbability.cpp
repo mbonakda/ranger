@@ -795,6 +795,7 @@ void TreeProbability::reshape() {
 
 }
 
+/*
 void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std::pair<size_t, size_t>> & id_edges) {
 
   std::unordered_map<size_t, size_t> id_to_idx; 
@@ -860,11 +861,9 @@ void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std:
     M->solve();
     auto t2 = std::chrono::high_resolution_clock::now();
 
-    /*
     std::cout << "mosek solve took "
       << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
       << " seconds\n";
-      */
 
     //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
 
@@ -883,5 +882,6 @@ void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std:
   }
 
 }
+*/
 
 
