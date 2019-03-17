@@ -27,7 +27,7 @@ The discrete choice random forest implementation allows the user to specify a `s
 
 Example usage:
 ```r
-rf .                    <- ranger(dependent.variable.name = 'choice',
+rf                      <- ranger(dependent.variable.name = 'choice',
                                   data                = input.data.df,
                                   write.forest        = TRUE,
                                   num.trees           = 100,
