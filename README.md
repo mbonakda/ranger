@@ -3,7 +3,7 @@
 * Extended by Matt Bonakdarpour
 
 ### Introduction
-This fork of the ranger package contains implementations for the following two methods:
+This fork of the ranger package contains implementations of the following two methods:
 * Random Forest Reshaping (Bonakdarpour et al., 2018)
 * Discrete Choice Random Forests
 
@@ -23,7 +23,9 @@ rf                       <- ranger(dependent.variable.name = 'y',
 ```
 
 ### Discrete Choice Random Forests
-The discrete choice random forest implementation allows the user to specify a `speedy` input parameter which implements an approximate split-finding algorithm. The dataframe is expect to be in "long" format as defined by the `mlogit` R package. The implementation expects a column labeled `agentID` which uniquely identifies the agent making the choice in the corresponding row. The dependent variable is assumed to be an integer (0 or 1) depending on whether or not the agent chose the corresponding item in that row. The remaining columns are assumed to be predictor variables. 
+The discrete choice random forest implementation allows the user to specify a `speedy` input parameter which implements an approximate split-finding algorithm for efficiency. The input dataframe is expected to be in "long" format as defined by the `mlogit` R package. 
+
+The implementation expects a column labeled `agentID` which uniquely identifies the agent making the choice in the corresponding row. Each row contains information about a choice event -- predictor variables for the agent and a single item. Multiple rows will correspond to an agent. The dependent variable is assumed to be an integer (0 or 1) depending on whether or not the agent chose the corresponding item in that row. The remaining columns are assumed to be predictor variables. 
 
 Example usage:
 ```r
@@ -31,7 +33,8 @@ rf                      <- ranger(dependent.variable.name = 'choice',
                                   data                = input.data.df,
                                   write.forest        = TRUE,
                                   num.trees           = 100,
-                                  discrete.choice     = TRUE
+                                  discrete.choice     = TRUE,
+                                  speedy              = TRUE
                                  )
 ```
 
