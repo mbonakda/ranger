@@ -25,7 +25,6 @@
  http://www.imbs-luebeck.de
  wright@imbs.uni-luebeck.de
  #-------------------------------------------------------------------------------*/
-
 #ifndef FORESTDISCRETECHOICE_H_
 #define FORESTDISCRETECHOICE_H_
 

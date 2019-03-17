@@ -50,10 +50,6 @@
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
 
 
-// for underconstrained estimator
-// sampleID --> splitNode --> Left/Right --> leafID
-typedef std::unordered_map<size_t, std::unordered_map<size_t, std::vector<std::vector<size_t>>>> underconstr_map;
-
 class Sample {
 public:
   Sample(size_t id) {
@@ -106,7 +102,6 @@ public:
   std::vector<std::pair<size_t, double>> get_leaves(size_t node_id, const optmap & leftmap, const optmap & rightmap);
   void over_constr_opt(size_t node, const std::vector<std::pair<size_t, double>> & leftmap, const std::vector<std::pair<size_t, double>> & rightmap);
   void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges) {}
-  void under_constr_opt(const std::vector<std::pair<size_t, size_t>> &edges, const std::vector<std::vector<std::pair<double, double>>> & dim_intervals);
 
   std::vector<std::pair<size_t, size_t>> find_intersections( size_t nodeID, const std::vector<std::pair<size_t, double>> & l_leaves, const std::vector<std::pair<size_t, double>>& r_leaves,
       const std::vector<std::vector<std::pair<double, double>>> & dim_intervals  ); 
@@ -202,13 +197,10 @@ protected:
   int max_tree_height;
   // For each node a vector with IDs of samples in node
   std::vector<std::vector<size_t>> sampleIDs;
-  std::vector<std::vector<Sample>> underconstr_samples;
-  underconstr_map underconstr_info;
 
   std::vector<int> node_depth;
   int tree_height;
   int over_num_constraints;
-  int under_num_constraints;
   int goldi_num_constraints;
   int num_sc_nodes;
   int lowest_sc_depth;

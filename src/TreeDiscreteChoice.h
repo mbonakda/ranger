@@ -25,7 +25,6 @@
  http://www.imbs-luebeck.de
  wright@imbs.uni-luebeck.de
  #-------------------------------------------------------------------------------*/
-
 #ifndef TREEDISCRETECHOICE_H_
 #define TREEDISCRETECHOICE_H_
 

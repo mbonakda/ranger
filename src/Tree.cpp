@@ -230,67 +230,8 @@ void Tree::grow(std::vector<double>* variable_importance) {
 // Delete sampleID vector to save memory
   dim_intervals.clear();
   sampleIDs.clear();
-  underconstr_samples.clear();
   cleanUpInternal();
 }
-
-void Tree::under_constr_opt(const std::vector<std::pair<size_t, size_t>> &edges, const std::vector<std::vector<std::pair<double, double>>> & dim_intervals) {
-  std::vector<std::pair<size_t, size_t>> intersections;
-
-  std::unordered_map<size_t, std::unordered_set<size_t>> edge_map;
-  std::vector<std::pair<size_t, size_t>> intersections_unique;
-
-  for( auto & sID_to_splitNode: underconstr_info ) {
-    //std::cout << "sampleID: " << sID_to_splitNode.first << std::endl;
-    for( auto & splitNode : sID_to_splitNode.second ) {
-      //std::cout << "\tsplitNodeID: " << splitNode.first << std::endl;
-      if( splitNode.second[0].size() > 0 && splitNode.second[1].size() > 0 ) {
-        for( auto & l_leafID : splitNode.second[1] ) {
-          auto itr = edge_map.find(l_leafID);
-          if( itr == edge_map.end() ) {
-            edge_map[l_leafID] = std::unordered_set<size_t>();
-          }
-          for( auto & r_leafID : splitNode.second[0] ) {
-            intersections.push_back(std::pair<size_t,size_t>(l_leafID, r_leafID));
-            auto itr2 = edge_map[l_leafID].find(r_leafID);
-            if( itr2 == edge_map[l_leafID].end() ) {
-              edge_map[l_leafID].insert(r_leafID);
-              //std::cout << "splitNode: " << splitNode.first << " edge: (" << l_leafID << "," << r_leafID << ")" << std::endl;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  for(auto & xx : edge_map ) {
-    for(auto & yy: xx.second) {
-      intersections_unique.push_back(std::pair<size_t,size_t>(xx.first, yy));
-      /*
-      bool found = std::find(edges.begin(), edges.end(), std::pair<size_t,size_t>(xx.first, yy)) != edges.end();
-      if( ! found ) {
-        size_t l_leafID = xx.first;
-        size_t r_leafID = yy;
-        std::cout << "left(" << l_leafID << "): ";
-        for( size_t i = 0; i < dim_intervals[l_leafID].size(); ++i ) {
-          std::cout << "[" << i << ": (" << dim_intervals[l_leafID][i].first << "," << dim_intervals[l_leafID][i].second << ")] ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "right(" << r_leafID << "): ";
-        for( size_t i = 0; i < dim_intervals[r_leafID].size(); ++i ) {
-          std::cout << "[" << i << ": (" << dim_intervals[r_leafID][i].first << "," << dim_intervals[r_leafID][i].second << ")] ";
-        }
-        std::cout << std::endl;
-      } 
-      */
-    }
-  }
-
-  under_num_constraints = intersections_unique.size();
-
-}
-
 
 std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<double> & sorted_v, bool increasing) {
 
@@ -609,14 +550,6 @@ bool Tree::splitNode(size_t nodeID) {
 
 
   if (stop) {
-    for (auto& s : underconstr_samples[nodeID]) {
-      for( auto & splits : s.split_info ) {
-        if(  underconstr_info[s.sampleID][splits.first].size() != 2 )  {
-          underconstr_info[s.sampleID][splits.first].resize(2);
-        }
-        underconstr_info[s.sampleID][splits.first][splits.second].push_back(nodeID);
-      }
-    }
     if( node_depth[nodeID] > tree_height ) {
       tree_height = node_depth[nodeID];
     }
@@ -652,33 +585,6 @@ bool Tree::splitNode(size_t nodeID) {
   }
 // For each sample in node, assign to left or right child
   if ((*is_ordered_variable)[split_varID]) {
-    for (auto& s : underconstr_samples[nodeID]) {
-      if (data->get(s.sampleID, split_varID) <= split_value) {
-        if(is_sc_split) {
-          Sample right(s.sampleID, s.split_info);
-          right.split_info.push_back(std::pair<size_t,bool>(nodeID, false));
-          underconstr_samples[right_child_nodeID].push_back(right);
-
-          Sample left(s.sampleID, s.split_info);
-          left.split_info.push_back(std::pair<size_t,bool>(nodeID, true));
-          underconstr_samples[left_child_nodeID].push_back(left);
-        } else {
-          underconstr_samples[left_child_nodeID].push_back(s);
-        }
-      } else {
-        if(is_sc_split) {
-          Sample right(s.sampleID, s.split_info);
-          right.split_info.push_back(std::pair<size_t,bool>(nodeID, false));
-          underconstr_samples[right_child_nodeID].push_back(right);
-
-          Sample left(s.sampleID, s.split_info);
-          left.split_info.push_back(std::pair<size_t,bool>(nodeID, true));
-          underconstr_samples[left_child_nodeID].push_back(left);
-        } else {
-          underconstr_samples[right_child_nodeID].push_back(s);
-        }
-      }
-    }
 
     // Ordered: left is <= splitval and right is > splitval
     for (auto& sampleID : sampleIDs[nodeID]) {
@@ -692,18 +598,6 @@ bool Tree::splitNode(size_t nodeID) {
     }
 
   } else {
-    for (auto& s : underconstr_samples[nodeID]) {
-      double level    = data->get(s.sampleID, split_varID);
-      size_t factorID = floor(level) - 1;
-      size_t splitID  = floor(split_value);
-
-      // Left if 0 found at position factorID
-      if (!(splitID & (1 << factorID))) {
-        underconstr_samples[left_child_nodeID].push_back(s);
-      } else {
-        underconstr_samples[right_child_nodeID].push_back(s);
-      }
-    }
     // Unordered: If bit at position is 1 -> right, 0 -> left
     for (auto& sampleID : sampleIDs[nodeID]) {
       double level = data->get(sampleID, split_varID);
@@ -721,7 +615,6 @@ bool Tree::splitNode(size_t nodeID) {
     }
   }
 
-  underconstr_samples[nodeID].clear(); // remove sampleIDs for all non-leaves to conserve memory
   splitNode_post_process();
 // No terminal node
   return false;
@@ -733,7 +626,6 @@ void Tree::createEmptyNode() {
   child_nodeIDs[0].push_back(0);
   child_nodeIDs[1].push_back(0);
   sampleIDs.push_back(std::vector<size_t>());
-  underconstr_samples.push_back(std::vector<Sample>());
   node_depth.push_back(0);
 
   if( dim_intervals.size() == 0 ) {
@@ -809,7 +701,6 @@ void Tree::bootstrap() {
 
 // Reserve space, reserve a little more to be save)
   sampleIDs[0].reserve(num_samples_inbag);
-  underconstr_samples[0].reserve(num_samples_inbag);
   oob_sampleIDs.reserve(num_samples * (exp(-sample_fraction) + 0.1));
 
   std::uniform_int_distribution<size_t> unif_dist(0, num_samples - 1);
@@ -826,7 +717,6 @@ void Tree::bootstrap() {
     auto itr = ids.find(draw);
     if( itr == ids.end() ) {
       Sample tmp_sample(draw);
-      underconstr_samples[0].push_back(tmp_sample);
       ids.insert(draw);
     }
 
@@ -857,7 +747,6 @@ void Tree::bootstrapWeighted() {
 
 // Reserve space, reserve a little more to be save)
   sampleIDs[0].reserve(num_samples_inbag);
-  underconstr_samples[0].reserve(num_samples_inbag);
   oob_sampleIDs.reserve(num_samples * (exp(-sample_fraction) + 0.1));
 
   std::discrete_distribution<> weighted_dist(case_weights->begin(), case_weights->end());
@@ -874,7 +763,6 @@ void Tree::bootstrapWeighted() {
     auto itr = ids.find(draw);
     if( itr == ids.end() ) {
       Sample tmp_sample(draw);
-      underconstr_samples[0].push_back(tmp_sample);
       ids.insert(draw);
     }
     ++inbag_counts[draw];

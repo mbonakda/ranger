@@ -17,7 +17,6 @@
  Written by:
  Matt Bonakdarpour
  #-------------------------------------------------------------------------------*/
-
 #include <algorithm>
 #include <iostream>
 #include <iterator>
