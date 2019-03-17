@@ -220,6 +220,8 @@ predict.ranger.forest <- function(object, data, predict.all = FALSE,
     treetype <- 1
   } else if (forest$treetype == "Regression") {
     treetype <- 3
+  } else if (forest$treetype == "Discrete Choice") {
+    treetype <- 4
   } else if (forest$treetype == "Survival") {
     treetype <- 5
   } else if (forest$treetype == "Probability estimation") {
@@ -254,6 +256,7 @@ predict.ranger.forest <- function(object, data, predict.all = FALSE,
   sample.fraction <- 1
   holdout <- FALSE
   num.random.splits <- 1
+  speedy <- TRUE
   
   max.tree.height <- -1 ## TODO: fix this
   sc.variable.names = c('') ## TODO: fix this
@@ -265,7 +268,7 @@ predict.ranger.forest <- function(object, data, predict.all = FALSE,
                       status.variable.name, prediction.mode, forest, sparse.data, replace, probability,
                       unordered.factor.variables, use.unordered.factor.variables, save.memory, splitrule,
                       case.weights, use.case.weights, predict.all, keep.inbag, sample.fraction,
-                      alpha, minprop, holdout, prediction.type, num.random.splits, sc.variable.names, max.tree.height)
+                      alpha, minprop, holdout, prediction.type, num.random.splits, sc.variable.names, max.tree.height, speedy)
 
   if (length(result) == 0) {
     stop("User interrupt or internal error.")
