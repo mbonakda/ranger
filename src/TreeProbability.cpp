@@ -692,3 +692,196 @@ void TreeProbability::addImpurityImportance(size_t nodeID, size_t varID, double 
   (*variable_importance)[tempvarID] += best_gini;
 }
 
+void TreeProbability::reshape() {
+
+  if( class_values->size() != 2 ) {
+    std::cout << "reshaping only supports 2 classes" << std::endl;
+    exit(1);
+  }
+  reshape_class_idx = find(class_values->begin(), class_values->end(), 2) - class_values->begin();
+
+  // 1. level-order traversal of shape-constrained nodes
+  std::vector<size_t> sc_nodes;
+  std::queue<size_t>  q;
+  q.push(0);
+  while(q.empty() == false) {
+
+    size_t curr_node    = q.front();
+    size_t left_nodeID  = child_nodeIDs[0][curr_node]; 
+    size_t right_nodeID = child_nodeIDs[1][curr_node]; 
+    q.pop();
+
+    // only add nodes with children
+    auto sc_itr = sc_variable_IDs.find(split_varIDs[curr_node]);
+    if(sc_itr != sc_variable_IDs.end() && left_nodeID != 0 && right_nodeID != 0) {
+      sc_nodes.push_back(curr_node);
+    }
+
+    if(left_nodeID != 0) {
+      q.push(left_nodeID);
+    }
+    if(right_nodeID != 0) {
+      q.push(right_nodeID);
+    }
+  }
+
+  std::reverse(sc_nodes.begin(), sc_nodes.end()); // bottom-up ordering
+  num_sc_nodes = sc_nodes.size();
+
+  // shape-constrained node id -> vector of leaf (node id, value) pairs
+  optmap node_to_left;
+  optmap node_to_right;
+
+  // 2. for each optimization node, need vector of left/right leaf IDs and values
+  over_num_constraints = 0;
+  for (auto& nn : sc_nodes) {
+    std::vector<std::pair<size_t, double>> left  = get_leaves(child_nodeIDs[0][nn], node_to_left, node_to_right);
+    node_to_left[nn] = left;
+    std::vector<std::pair<size_t, double>> right = get_leaves(child_nodeIDs[1][nn], node_to_left, node_to_right);
+    node_to_right[nn] = right;
+    over_num_constraints += left.size() * right.size();
+  }
+
+  // 3. perform exact optimization 
+  auto t1 = std::chrono::high_resolution_clock::now();
+  std::vector<std::pair<size_t, size_t>> intersections;
+  for (auto& nn : sc_nodes) {
+    std::vector<std::pair<size_t, size_t>>   tmp_int = find_intersections( nn, node_to_left[nn], node_to_right[nn], dim_intervals );
+    intersections.insert(intersections.end(), tmp_int.begin(), tmp_int.end() );
+  }
+  auto t2 = std::chrono::high_resolution_clock::now();
+  time_goldiInt = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
+
+  goldi_num_constraints = intersections.size();
+  //std::cout << "num goldilocks constraints: " << goldi_num_constraints << std::endl;
+
+  std::set<size_t> leaf_ids;
+  for (auto& nn : sc_nodes) {
+    for(auto& ii: node_to_left[nn]) {
+      leaf_ids.insert(ii.first);
+    }
+    for(auto& ii: node_to_right[nn]) {
+      leaf_ids.insert(ii.first);
+    }
+  }
+
+  goldilocks_opt(leaf_ids, intersections);
+
+  /*
+  // 3. perform bottom-up over-constrained optimization
+  for (auto& nn : sc_nodes) {
+  over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
+  }
+  */
+
+
+  /*
+  // 3. perform under-constrained optimization
+  t1 = std::chrono::high_resolution_clock::now();
+  under_constr_opt(intersections, dim_intervals);
+  t2 = std::chrono::high_resolution_clock::now();
+  time_underInt = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
+  */
+
+  /*
+  //std::cout << "total shape-constrained leaves," << leaf_ids.size() << std::endl;
+
+  std::cout << leaf_ids.size() << " final leaves";
+  for( auto it = leaf_ids.begin(); it != leaf_ids.end(); ++it ) {
+  std::cout << "," << *it;
+  }	
+  std::cout << std::endl;
+  */
+
+}
+
+void TreeProbability::goldilocks_opt(const std::set<size_t> & leaves, const std::vector<std::pair<size_t, size_t>> & id_edges) {
+
+  std::unordered_map<size_t, size_t> id_to_idx; 
+  auto v = new_array_ptr<double,1>(leaves.size());
+
+  size_t idx = 0;
+  for( auto l : leaves ) {
+    (*v)[idx]    = terminal_class_counts[l][reshape_class_idx];
+    id_to_idx[l] = idx;
+    idx++;
+  }
+
+  std::vector<std::pair<size_t, size_t>> idx_edges;
+  for( auto e : id_edges ) {
+    //std::cout << "constraint," << e.first << "," << e.second << std::endl;
+    idx_edges.push_back(std::pair<size_t,size_t>(id_to_idx[e.first], id_to_idx[e.second]));
+  }
+
+
+  size_t num_vars = v->size() + 2; // 2 dummy variables
+  auto c          = new_array_ptr<double,1>(num_vars);
+  (*c)[0] = 0;
+  (*c)[1] = 1;
+  for( size_t ii = 2; ii < c->size(); ++ii ) {
+      (*c)[ii] = -1*(*v)[ii-2];
+  }
+
+  size_t num_constraints = idx_edges.size();
+
+  auto rows   = new_array_ptr<int,1>(2*num_constraints);
+  for(size_t ii = 0; ii < rows->size(); ++ii) {
+    (*rows)[ii] = int(ii/2); // each row appears twice for each constraint
+  }
+
+  auto cols   = new_array_ptr<int,1>(2*num_constraints);
+  auto values = new_array_ptr<double,1>(2*num_constraints);
+  for( int ii = 0; ii < idx_edges.size(); ++ii ) {
+    (*cols)[(2*ii)]         = idx_edges[ii].first + 2;
+    (*values)[2*ii]         = -1;
+    (*cols)[(2*ii)+1]       = idx_edges[ii].second + 2;
+    (*values)[(2*ii)+1]     = 1;
+  }
+
+  auto A = Matrix::sparse(num_constraints, num_vars, rows, cols, values);
+
+
+  Model::t M     = new Model("rrf"); auto _M = finally([&]() { M->dispose(); });
+  //M->setLogHandler([=](const std::string & msg) { std::cout << msg << std::flush; } );
+
+
+  Variable::t x0  = M->variable("x0", 1, Domain::equalsTo(1.));
+  Variable::t x1  = M->variable("x1", 1, Domain::greaterThan(0.));
+  Variable::t x2  = M->variable("x2", num_vars-2, Domain::unbounded());
+
+  Variable::t z1 = Var::vstack(x0, x1, x2);
+
+  Constraint::t qc = M->constraint("qc", z1, Domain::inRotatedQCone());
+  M->constraint("mono", Expr::mul(A,z1),Domain::greaterThan(0.));
+
+  M->objective("obj", ObjectiveSense::Minimize, Expr::dot(c,z1));
+  try {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    M->solve();
+    auto t2 = std::chrono::high_resolution_clock::now();
+
+    /*
+    std::cout << "mosek solve took "
+      << std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count()
+      << " seconds\n";
+      */
+
+    //std::cout << "mosek status = " << M->getPrimalSolutionStatus() << std::endl;
+
+    ndarray<double,1> xlvl   = *(x2->level());
+    for( auto p : id_to_idx ) {
+      double new_val = xlvl[p.second];
+      double old_val = terminal_class_counts[p.first][reshape_class_idx];
+      //std::cout << "values," << split_values[p.first] << "," << xlvl[p.second]*1e6 << "," << fabs(new_val - old_val) <<  std::endl;
+      terminal_class_counts[p.first][reshape_class_idx] = new_val;
+      uint other_idx = reshape_class_idx == 0 ? 1 : 0;
+      terminal_class_counts[p.first][other_idx] = 1-new_val;
+    }
+
+  }  catch(const FusionException &e) {
+    std::cout << "caught an exception" << std::endl;
+  }
+
+}
+
+

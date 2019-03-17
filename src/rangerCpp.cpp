@@ -36,7 +36,6 @@
 #include "ForestRegression.h"
 #include "ForestSurvival.h"
 #include "ForestProbability.h"
-#include "ForestDiscreteChoice.h"
 #include "Data.h"
 #include "DataChar.h"
 #include "DataDouble.h"
@@ -53,18 +52,14 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     bool use_unordered_variable_names, bool save_memory, uint splitrule_r, 
     std::vector<double>& case_weights, bool use_case_weights, bool predict_all, 
     bool keep_inbag, double sample_fraction, double alpha, double minprop, bool holdout, uint prediction_type_r, 
-    uint num_random_splits, std::vector<std::string> sc_variable_names, int max_tree_height, bool speedy) {
+    uint num_random_splits, std::vector<std::string> sc_variable_names, int max_tree_height) {
 
-  /*
-     if(!prediction_mode)
-     std::cout << "-- running shape constrained version --" << std::endl;
-     */
+  if(!prediction_mode)
+    std::cout << "-- running shape constrained version --" << std::endl;
 
   if(sc_variable_names.size() == 1 && sc_variable_names[0] == "") {
-    /*
       if(!prediction_mode)
           std::cout << "no shape constrained variables" << std::endl;
-          */
       sc_variable_names.clear(); // TODO: better way of handling no shape-contraints
   } else {
       for( auto & s : sc_variable_names ) {
@@ -126,9 +121,6 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
     case TREE_PROBABILITY:
       forest = new ForestProbability;
       break;
-    case TREE_DISCRETE_CHOICE:
-      forest = new ForestDiscreteChoice;
-      break;
     }
 
     ImportanceMode importance_mode = (ImportanceMode) importance_mode_r;
@@ -140,7 +132,7 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
         importance_mode, min_node_size, split_select_weights, always_split_variable_names, status_variable_name,
         prediction_mode, sample_with_replacement, unordered_variable_names, save_memory, splitrule, case_weights, 
         predict_all, keep_inbag, sample_fraction, alpha, minprop, holdout, prediction_type, num_random_splits,
-        sc_variable_names, max_tree_height, speedy);
+        sc_variable_names, max_tree_height);
 
     // Load forest object if in prediction mode
     if (prediction_mode) {
@@ -170,9 +162,6 @@ Rcpp::List rangerCpp(uint treetype, std::string dependent_variable_name,
         loaded_forest["terminal.class.counts"];
         ((ForestProbability*) forest)->loadForest(dependent_varID, num_trees, child_nodeIDs, split_varIDs, split_values,
             class_values, terminal_class_counts, is_ordered);
-      } else if (treetype == TREE_DISCRETE_CHOICE) {
-        ((ForestDiscreteChoice*) forest)->loadForest(dependent_varID, num_trees, child_nodeIDs, split_varIDs, split_values,
-            is_ordered);
       }
     }
 

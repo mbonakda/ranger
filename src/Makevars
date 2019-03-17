@@ -1,5 +1,6 @@
 ## Use c++11
 
 CXX_STD = CXX11
-PKG_CPPFLAGS = -DR_BUILD 
+PKG_CPPFLAGS = -DR_BUILD -Wl,-rpath-link,/home/mbonakda/mosek/8/tools/platform/linux64x86/bin '-Wl,-rpath=/home/mbonakda/mosek/8/tools/platform/linux64x86/bin' -I/home/mbonakda/mosek/8/tools/platform/linux64x86/h -I/home/mbonakda/mosek/8/tools/platform/linux64x86/include -L/home/mbonakda/mosek/8/tools/platform/linux64x86/bin
 
+PKG_LIBS=-L/home/mbonakda/mosek/8/tools/platform/linux64x86/bin -Wl,-rpath-link,/home/mbonakda/mosek/8/tools/platform/linux64x86/bin '-Wl,-rpath=/home/mbonakda/mosek/8/tools/platform/linux64x86/bin' -lfusion64 -lmosek64

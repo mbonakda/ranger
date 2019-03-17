@@ -39,16 +39,18 @@
 #include <chrono> //SC
 
 #include <limits>
+#include "fusion.h"
 #include <memory>
 #include <iostream>
 
 #include "globals.h"
 #include "Data.h"
 
+using namespace mosek::fusion;
+using namespace monty;
 
 // shape-constrained node id -> vector of leaf (node id, value) pairs
 typedef std::unordered_map<size_t, std::vector<std::pair<size_t, double>>> optmap; 
-
 
 // for underconstrained estimator
 // sampleID --> splitNode --> Left/Right --> leafID
@@ -84,15 +86,9 @@ public:
       std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
       bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
       double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-      std::vector<size_t>* sc_variable_IDs, int maxTreeHeight, bool speedy);
+      std::vector<size_t>* sc_variable_IDs, int maxTreeHeight);
 
   virtual void initInternal() = 0;
-
-  virtual void post_bootstrap_init() {
-    for(auto s_ID : sampleIDs[0]) {
-      sampleID_to_leafID[s_ID] = 0;
-    }
-  }
 
   void grow(std::vector<double>* variable_importance);
 
@@ -144,8 +140,8 @@ protected:
 
   virtual double computePredictionAccuracyInternal() = 0;
 
-  virtual void bootstrap();
-  virtual void bootstrapWithoutReplacement();
+  void bootstrap();
+  void bootstrapWithoutReplacement();
 
   void bootstrapWeighted();
   void bootstrapWithoutReplacementWeighted();
@@ -154,9 +150,7 @@ protected:
 
   virtual void reshape() { }
   int time_growTrees, time_goldiInt, time_underInt;
-  virtual void grow_post_process() { }
-  virtual void splitNode_post_process() { }
-  
+
   size_t dependent_varID;
   uint mtry;
 
@@ -244,15 +238,6 @@ protected:
   uint num_random_splits;
 
   std::unordered_set<size_t> sc_variable_IDs;;
-
-  // discrete-choice agent maps
-  // sampleID -> agentID (by idx)
-  std::vector<size_t> agentIDs;
-  // sampleID -> leafID
-  std::unordered_map<size_t, size_t> sampleID_to_leafID; 
-  std::unordered_set<size_t>  leafIDs;
-
-  bool speedy;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Tree);

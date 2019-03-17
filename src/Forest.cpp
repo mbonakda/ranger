@@ -157,7 +157,7 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
     std::vector<std::string>& unordered_variable_names, bool memory_saving_splitting, SplitRule splitrule,
     std::vector<double>& case_weights, bool predict_all, bool keep_inbag, double sample_fraction, double alpha,
     double minprop, bool holdout, PredictionType prediction_type, uint num_random_splits, 
-    std::vector<std::string>& sc_variable_names, int max_tree_height, bool speedy) {
+    std::vector<std::string>& sc_variable_names, int max_tree_height) {
 
   this->verbose_out = verbose_out;
 
@@ -196,7 +196,6 @@ void Forest::initR(std::string dependent_variable_name, Data* input_data, uint m
   }
 
   m_max_tree_height = max_tree_height;
-  this->speedy      = speedy;
   
 }
 
@@ -441,7 +440,7 @@ void Forest::grow() {
     trees[i]->init(data, mtry, dependent_varID, num_samples, tree_seed, &deterministic_varIDs, &split_select_varIDs,
         tree_split_select_weights, importance_mode, min_node_size, &no_split_variables, sample_with_replacement,
         &is_ordered_variable, memory_saving_splitting, splitrule, &case_weights, keep_inbag, sample_fraction, alpha,
-        minprop, holdout, num_random_splits, &sc_variable_IDs, m_max_tree_height, speedy);
+        minprop, holdout, num_random_splits, &sc_variable_IDs, m_max_tree_height);
   }
 
 // Init variable importance
@@ -476,18 +475,11 @@ void Forest::grow() {
     }
     threads.push_back(std::thread(&Forest::growTreesInThread, this, i, &(variable_importance_threads[i])));
   }
-  auto t1 = std::chrono::high_resolution_clock::now();
   showProgress("Growing trees..");
   for (auto &thread : threads) {
     thread.join();
   }
-  auto t2 = std::chrono::high_resolution_clock::now();
-  auto grow_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-  std::cout << "timing,growForest," << grow_time
-            << ",numTrees=" << num_trees
-            << ",numThreads=" << num_threads
-            << std::endl;
-      
+
 #ifdef R_BUILD
   if (aborted_threads > 0) {
     throw std::runtime_error("User interrupt.");
@@ -683,10 +675,7 @@ void Forest::computePermutationImportance() {
 void Forest::growTreesInThread(uint thread_idx, std::vector<double>* variable_importance) {
   if (thread_ranges.size() > thread_idx + 1) {
     for (size_t i = thread_ranges[thread_idx]; i < thread_ranges[thread_idx + 1]; ++i) {
-      auto t1 = std::chrono::high_resolution_clock::now();
       trees[i]->grow(variable_importance);
-      auto t2 = std::chrono::high_resolution_clock::now();
-      auto grow_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
       // Check for user interrupt
 #ifdef R_BUILD
@@ -700,7 +689,6 @@ void Forest::growTreesInThread(uint thread_idx, std::vector<double>* variable_im
 
       // Increase progress by 1 tree
       std::unique_lock<std::mutex> lock(mutex);
-      //std::cout << "timing,oneTree," << grow_time << std::endl;
       ++progress;
       condition_variable.notify_one();
     }

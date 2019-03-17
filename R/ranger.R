@@ -190,8 +190,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                    num.threads = NULL, save.memory = FALSE,
                    verbose = TRUE, seed = NULL, 
                    dependent.variable.name = NULL, status.variable.name = NULL, 
-                   classification = NULL, sc.variable.names = NULL, max.tree.height = NULL,
-                   discrete.choice = FALSE, speedy = FALSE ) {
+                   classification = NULL, sc.variable.names = NULL, max.tree.height = NULL ) {
   
   ## GenABEL GWA data
   if ("gwaa.data" %in% class(data)) {
@@ -256,8 +255,6 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       treetype <- 1
     } else if (probability) {
       treetype <- 9
-    } else if (discrete.choice) {
-      treetype <- 4
     } else {
       treetype <- 3
     }
@@ -610,7 +607,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                       replace, probability, unordered.factor.variables, use.unordered.factor.variables, 
                       save.memory, splitrule.num, case.weights, use.case.weights, predict.all, 
                       keep.inbag, sample.fraction, alpha, minprop, holdout, prediction.type, 
-                      num.random.splits, sc.variable.names, max.tree.height, speedy)
+                      num.random.splits, sc.variable.names, max.tree.height)
   
   if (length(result) == 0) {
     stop("User interrupt or internal error.")
@@ -659,8 +656,6 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
     result$treetype <- "Classification"
   } else if (treetype == 3) {
     result$treetype <- "Regression"
-  } else if (treetype == 4) {
-    result$treetype <- "Discrete Choice"
   } else if (treetype == 5) {
     result$treetype <- "Survival"
   } else if (treetype == 9) {

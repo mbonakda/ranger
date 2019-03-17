@@ -67,6 +67,9 @@ public:
 private:
   bool splitNodeInternal(size_t nodeID, std::vector<size_t>& possible_split_varIDs);
   void createEmptyNodeInternal();
+  void reshape();
+  void goldilocks_opt(const std::set<size_t> &leaves, const std::vector<std::pair<size_t, size_t>> &edges);
+  uint reshape_class_idx;
 
   double computePredictionAccuracyInternal();
 
