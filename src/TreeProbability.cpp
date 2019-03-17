@@ -742,6 +742,7 @@ void TreeProbability::reshape() {
     over_num_constraints += left.size() * right.size();
   }
 
+  /*
   // 3. perform exact optimization 
   auto t1 = std::chrono::high_resolution_clock::now();
   std::vector<std::pair<size_t, size_t>> intersections;
@@ -766,13 +767,12 @@ void TreeProbability::reshape() {
   }
 
   goldilocks_opt(leaf_ids, intersections);
+  */
 
-  /*
   // 3. perform bottom-up over-constrained optimization
   for (auto& nn : sc_nodes) {
-  over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
+    over_constr_opt(nn, node_to_left[nn], node_to_right[nn]);
   }
-  */
 
 
   /*
