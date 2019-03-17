@@ -33,8 +33,6 @@
 #include "utility.h"
 
 
-
-
 Tree::Tree() :
     dependent_varID(0), mtry(0), num_samples(0), num_samples_oob(0), is_ordered_variable(0), no_split_variables(0), min_node_size(
         0), deterministic_varIDs(0), split_select_varIDs(0), split_select_weights(0), case_weights(0), oob_sampleIDs(0), holdout(
@@ -62,7 +60,7 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
     std::vector<size_t>* no_split_variables, bool sample_with_replacement, std::vector<bool>* is_unordered,
     bool memory_saving_splitting, SplitRule splitrule, std::vector<double>* case_weights, bool keep_inbag,
     double sample_fraction, double alpha, double minprop, bool holdout, uint num_random_splits,
-    std::vector<size_t>* sc_variable_IDs, int maxTreeHeight) {
+    std::vector<size_t>* sc_variable_IDs, int maxTreeHeight, bool speedy) {
 
   this->data = data;
   this->mtry = mtry;
@@ -100,6 +98,7 @@ void Tree::init(Data* data, uint mtry, size_t dependent_varID, size_t num_sample
   }
 
   max_tree_height = maxTreeHeight;
+  this->speedy    = speedy;
 
   initInternal();
 }
@@ -175,7 +174,7 @@ void Tree::grow(std::vector<double>* variable_importance) {
 
   this->variable_importance = variable_importance;
 
-// Bootstrap, dependent if weighted or not and with or without replacement
+  // Bootstrap, dependent if weighted or not and with or without replacement
   if (case_weights->empty()) {
     if (sample_with_replacement) {
       bootstrap();
@@ -189,6 +188,8 @@ void Tree::grow(std::vector<double>* variable_importance) {
       bootstrapWithoutReplacementWeighted();
     }
   }
+  
+  post_bootstrap_init();
 
   auto t1 = std::chrono::high_resolution_clock::now();
 // While not all nodes terminal, split next node
@@ -203,10 +204,18 @@ void Tree::grow(std::vector<double>* variable_importance) {
     }
     ++i;
   }
-  auto t2 = std::chrono::high_resolution_clock::now();
-  time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
 
-  //std::cout << "number of nodes," + std::to_string(sampleIDs.size()) << std::endl;
+  auto t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "timing,growTree," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << std::endl;
+
+
+  t1 = std::chrono::high_resolution_clock::now();
+  grow_post_process();
+  t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "timing,growPostProcess," << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << std::endl;
+  
+  //time_growTrees = std::chrono::duration_cast<std::chrono::seconds>(t2-t1).count();
+  //std::cout << "number of nodes," << sampleIDs.size() << std::endl;
 
   if(!sc_variable_IDs.empty()) {
      reshape();
@@ -223,7 +232,6 @@ void Tree::grow(std::vector<double>* variable_importance) {
   sampleIDs.clear();
   cleanUpInternal();
 }
-
 
 std::vector<size_t> sort_indexes(const std::vector<double> &v, std::vector<double> & sorted_v, bool increasing) {
 
@@ -540,6 +548,7 @@ bool Tree::splitNode(size_t nodeID) {
     stop = true;
   }
 
+
   if (stop) {
     if( node_depth[nodeID] > tree_height ) {
       tree_height = node_depth[nodeID];
@@ -550,9 +559,11 @@ bool Tree::splitNode(size_t nodeID) {
 
   size_t split_varID = split_varIDs[nodeID];
   double split_value = split_values[nodeID];
+  leafIDs.erase(nodeID);
 
 // Create child nodes
   size_t left_child_nodeID = sampleIDs.size();
+  leafIDs.insert(left_child_nodeID);
   child_nodeIDs[0][nodeID] = left_child_nodeID;
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
@@ -560,6 +571,7 @@ bool Tree::splitNode(size_t nodeID) {
   node_depth[left_child_nodeID] = node_depth[nodeID]+1;
 
   size_t right_child_nodeID = sampleIDs.size();
+  leafIDs.insert(right_child_nodeID);
   child_nodeIDs[1][nodeID] = right_child_nodeID;
   createEmptyNode();
   dim_intervals.push_back(dim_intervals[nodeID]);
@@ -578,8 +590,10 @@ bool Tree::splitNode(size_t nodeID) {
     for (auto& sampleID : sampleIDs[nodeID]) {
       if (data->get(sampleID, split_varID) <= split_value) {
         sampleIDs[left_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = left_child_nodeID;
       } else {
         sampleIDs[right_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = right_child_nodeID;
       }
     }
 
@@ -593,13 +607,15 @@ bool Tree::splitNode(size_t nodeID) {
       // Left if 0 found at position factorID
       if (!(splitID & (1 << factorID))) {
         sampleIDs[left_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = left_child_nodeID;
       } else {
         sampleIDs[right_child_nodeID].push_back(sampleID);
+        sampleID_to_leafID[sampleID] = right_child_nodeID;
       }
     }
   }
 
-
+  splitNode_post_process();
 // No terminal node
   return false;
 }
